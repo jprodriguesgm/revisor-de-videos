@@ -1,0 +1,27 @@
+RELATÓRIO DE TEMPO DE VÍDEO
+Projeto (pasta editados): Carlos 21:09
+Data: 07/10/2026 10:32
+
+BRUTOS (7 arquivos)
+  00:00:32  2026-09-21 10-36-59.mp4
+  00:00:05  2026-09-21 10-37-41.mp4
+  00:33:56  2026-09-21 10-38-10-001.mp4
+  00:02:03  2026-09-21 11-12-09.mp4
+  00:02:59  2026-09-21 11-14-18.mp4
+  00:14:43  2026-09-21 11-17-22-003.mp4
+  00:14:27  2026-09-21 11-32-08-002.mp4
+
+EDITADOS (5 arquivos)
+  00:13:18  01 Introdução ao Direito Previdenciário e ao Processo Previdenciário - Parte 1-.mp4
+  00:15:58  02 Introdução ao Direito Previdenciário e ao Processo Previdenciário - Parte 2.mp4
+  00:00:50  03 Apresentação.mp4
+  00:12:12  04 Introdução ao Direito Previdenciário e ao Processo Previdenciário - Parte 3.mp4
+  00:12:46  05 Panorama sobre benefícios do RGPS.mp4
+
+----------------------------------------------
+TEMPO DE GRAVAÇÃO (bruto): 01:08:46
+TEMPO LÍQUIDO (editado):   00:55:04
+APROVEITAMENTO:            80,1%
+TEMPO DESCARTADO:          00:13:42
+
+Ignorados por terminarem em -D ou -E: brutos 14, editados 0

@@ -1,0 +1,44 @@
+RELATÓRIO DE TEMPO DE VÍDEO
+Projeto (pasta editados): Saida
+Data: 23/09/2026 14:41
+
+BRUTOS (15 arquivos)
+  00:00:36  2026-09-17 13-02-58.mp4
+  00:12:50  2026-09-17 13-03-51-009.mp4
+  00:14:34  2026-09-17 13-16-43-014.mp4
+  00:11:08  2026-09-17 13-31-19.mp4
+  00:12:49  2026-09-17 13-42-31-001.mp4
+  00:09:38  2026-09-17 13-55-24.mp4
+  00:14:27  2026-09-17 14-05-07-005.mp4
+  00:13:20  2026-09-17 14-19-37-006.mp4
+  00:13:23  2026-09-17 14-32-58-013.mp4
+  00:08:18  2026-09-17 14-46-24.mp4
+  00:12:12  2026-09-17 14-54-45-011.mp4
+  00:13:04  2026-09-17 15-07-00-008.mp4
+  00:09:44  2026-09-17 15-20-06.mp4
+  00:13:58  2026-09-17 15-29-52-007.mp4
+  00:13:28  2026-09-17 15-43-51-012.mp4
+
+EDITADOS (14 arquivos)
+  00:11:58  01 Juros simples e juros composto.mp4
+  00:13:24  02 VP e VPL.mp4
+  00:09:29  03 TIR.mp4
+  00:11:40  04 Payback simples e Payback descontado.mp4
+  00:07:57  05 Índice de Lucratividade.mp4
+  00:13:25  06 Análise de Viabilidade de Projetos.mp4
+  00:10:59  07 Capital de Giro.mp4
+  00:11:30  08 Políticas Operacionais.mp4
+  00:06:52  09 Capital de Giro e Prazos Médios.mp4
+  00:10:58  10 Prazo Médio de Estoque.mp4
+  00:11:22  11 Prazo Médio de Recebimento.mp4
+  00:08:41  12 Prazo Médio de Compras.mp4
+  00:11:38  13 Prazo Médio de Pagamento.mp4
+  00:12:56  14 Capital de Giro e Ciclos.mp4
+
+----------------------------------------------
+TEMPO DE GRAVAÇÃO (bruto): 02:53:31
+TEMPO LÍQUIDO (editado):   02:32:49
+APROVEITAMENTO:            88,1%
+TEMPO DESCARTADO:          00:20:42
+
+Ignorados por terminarem em -D ou -E: brutos 30, editados 0

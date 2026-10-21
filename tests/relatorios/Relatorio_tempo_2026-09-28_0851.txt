@@ -1,0 +1,27 @@
+RELATÓRIO DE TEMPO DE VÍDEO
+Projeto (pasta editados): Saida
+Data: 28/09/2026 08:51
+
+BRUTOS (6 arquivos)
+  00:00:44  2026-09-18 13-19-26.mp4
+  00:08:16  2026-09-18 13-20-24.mp4
+  00:11:12  2026-09-18 13-28-44.mp4
+  00:09:48  2026-09-18 13-39-59.mp4
+  00:10:13  2026-09-18 13-49-48.mp4
+  00:10:38  2026-09-18 14-08-02.mp4
+
+EDITADOS (6 arquivos)
+  00:08:14  01 Níveis de maturidade e casos de uso de AIOPs nas operações - parte 1-.mp4
+  00:10:09  02 Níveis de maturidade e casos de uso de AIOPs nas operações - parte 2.mp4
+  00:09:24  03 IA generativa aplicada às operações- alertas inteligentes e explicação automatizadas de falhas - parte 1-.mp4
+  00:09:37  04 IA generativa aplicada às operações- alertas inteligentes e explicação automatizadas de falhas - parte 2.mp4
+  00:09:41  05 IA generativa no apoio à tomada de decisão em ambientes multicloud.mp4
+  00:00:44  2026-09-18 13-19-26.mp4
+
+----------------------------------------------
+TEMPO DE GRAVAÇÃO (bruto): 00:50:51
+TEMPO LÍQUIDO (editado):   00:47:49
+APROVEITAMENTO:            94,1%
+TEMPO DESCARTADO:          00:03:01
+
+Ignorados por terminarem em -D ou -E: brutos 12, editados 0

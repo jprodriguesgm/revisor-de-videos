@@ -1,0 +1,22 @@
+RELATÓRIO DE TEMPO DE VÍDEO
+Projeto (pasta editados): Saida
+Data: 24/09/2026 11:36
+
+BRUTOS (4 arquivos)
+  00:00:35  2026-09-15 08-33-48.mp4
+  00:39:48  2026-09-15 08-34-52.mp4
+  00:46:52  2026-09-15 09-15-51.mp4
+  00:19:58  2026-09-15 10-06-57.mp4
+
+EDITADOS (3 arquivos)
+  00:32:35   01 Estudo de caso- O voo da British Airways 5390.mp4
+  00:32:06   02 Estudo de caso- O voo Voepass 2283.mp4
+  00:17:13  03 Estudo de caso- Oo voo da Continental Express 2574.mp4
+
+----------------------------------------------
+TEMPO DE GRAVAÇÃO (bruto): 01:47:14
+TEMPO LÍQUIDO (editado):   01:21:55
+APROVEITAMENTO:            76,4%
+TEMPO DESCARTADO:          00:25:19
+
+Ignorados por terminarem em -D ou -E: brutos 8, editados 1

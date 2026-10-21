@@ -1,0 +1,23 @@
+RELATÓRIO DE TEMPO DE VÍDEO
+Projeto (pasta editados): Saida
+Data: 25/09/2026 07:08
+
+BRUTOS (4 arquivos)
+  00:00:16  2026-09-18 10-41-13.mp4
+  00:17:38  2026-09-18 10-42-27-002.mp4
+  00:17:41  2026-09-18 11-00-06-003.mp4
+  00:11:09  2026-09-18 11-29-45.mp4
+
+EDITADOS (4 arquivos)
+  00:17:34  01 Impacto Financeiro das decisões de TI.mp4
+  00:12:22  02 Case - Cloud x Infraestrutura.mp4
+  00:08:57  03 Ferramentas de Priorização.mp4
+  00:00:16  2026-09-18 10-41-13.mp4
+
+----------------------------------------------
+TEMPO DE GRAVAÇÃO (bruto): 00:46:43
+TEMPO LÍQUIDO (editado):   00:39:09
+APROVEITAMENTO:            83,8%
+TEMPO DESCARTADO:          00:07:34
+
+Ignorados por terminarem em -D ou -E: brutos 8, editados 0

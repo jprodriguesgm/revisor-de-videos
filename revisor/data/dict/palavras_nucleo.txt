@@ -1,0 +1,6 @@
+# Palavras sempre aceitas (núcleo / PUC Minas). Uma por linha.
+# A lista própria do JP (botão "Aceitar") fica nas configurações do app.
+PUCMINAS
+PUC
+IEC
+Minas

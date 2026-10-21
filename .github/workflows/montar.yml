@@ -1,0 +1,231 @@
+# Monta o Revisor de Vídeos para Mac (Apple Silicon) e Windows e publica em "Releases".
+# Roda quando alguém aperta "Run workflow" (aba Actions) ou quando sobe uma etiqueta v1.2.3.
+# Repositório privado: minutos do GitHub contam (Mac conta 10x). Por isso não roda a cada push,
+# e FFmpeg/Tesseract/Whisper/modelo ficam guardados no cache entre uma montagem e outra.
+name: Montar o app
+
+on:
+  workflow_dispatch:
+    inputs:
+      sistemas:
+        description: "Montar para"
+        type: choice
+        options: [ambos, mac, windows]
+        default: ambos
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: montar
+  cancel-in-progress: false
+
+jobs:
+  plano:
+    runs-on: ubuntu-24.04
+    outputs:
+      matriz: ${{ steps.m.outputs.matriz }}
+    steps:
+      - id: m
+        run: |
+          MAC='{"os":"macos-14","nome":"mac"}'; WIN='{"os":"windows-2022","nome":"windows"}'
+          case "${{ inputs.sistemas }}" in
+            mac) M="[$MAC]";; windows) M="[$WIN]";; *) M="[$MAC,$WIN]";;
+          esac
+          echo "matriz={\"include\":$M}" >> "$GITHUB_OUTPUT"
+
+  montar:
+    needs: plano
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plano.outputs.matriz) }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 75
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Programas de dentro do app (cache)
+        id: deps
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            bin
+            models
+          key: deps-${{ matrix.nome }}-${{ hashFiles('packaging/build_deps.py') }}
+
+      - name: Montar FFmpeg, Tesseract, whisper-cli e baixar o modelo
+        if: steps.deps.outputs.cache-hit != 'true'
+        run: python packaging/build_deps.py
+
+      # guarda logo (mesmo que um passo depois falhe, a próxima montagem não refaz tudo)
+      - name: Guardar programas no cache
+        if: steps.deps.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            bin
+            models
+          key: deps-${{ matrix.nome }}-${{ hashFiles('packaging/build_deps.py') }}
+
+      - name: Conferir programas
+        run: python packaging/build_deps.py check
+
+      - name: Python do app
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pyinstaller pytest
+
+      # O pip num Mac 14 escolhe o numpy "só macOS 14+"; o Mac do trabalho pode ser mais antigo.
+      - name: numpy que roda desde o macOS 11 (Mac)
+        if: matrix.nome == 'mac'
+        run: |
+          NV=$(python -c "import numpy; print(numpy.__version__)")
+          python -m pip download "numpy==$NV" --platform macosx_11_0_arm64 --only-binary=:all: --no-deps -d wheels11
+          python -m pip install --force-reinstall --no-deps wheels11/numpy-*.whl
+          python -c "import numpy; print('numpy', numpy.__version__, numpy.__file__)"
+
+      # versão oficial (etiqueta v1.2.3): o app leva o número da etiqueta
+      - name: Versão da etiqueta
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: |
+          VER="${GITHUB_REF#refs/tags/v}"
+          python -c "import re,sys; p='revisor/__init__.py'; s=open(p,encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'__version__ = \".*\"', '__version__ = \"'+sys.argv[1]+'\"', s))" "$VER"
+          python -c "import revisor; print('versão', revisor.__version__)"
+
+      - name: Testes
+        run: python -m pytest -q tests
+
+      - name: Montar o app (PyInstaller)
+        run: pyinstaller --noconfirm packaging/revisor.spec
+
+      - name: macOS mínimo de tudo dentro do app (Mac)
+        if: matrix.nome == 'mac'
+        shell: bash
+        run: |
+          set +e
+          python packaging/check_macos_min.py "dist/Revisor de Videos.app" 11.0 > minos.txt 2>&1
+          rc=$?
+          cat minos.txt
+          echo "::notice title=macOS mínimo::$(tr '\n' '|' < minos.txt)"
+          exit $rc
+
+      - name: Diagnóstico do app montado (Mac)
+        if: matrix.nome == 'mac'
+        shell: bash
+        run: |
+          echo "### Mac" > diag-mac.txt
+          cat minos.txt >> diag-mac.txt 2>/dev/null
+          sw_vers | tr '\n' ' ' >> diag-mac.txt; echo >> diag-mac.txt
+          set +e
+          "dist/Revisor de Videos.app/Contents/MacOS/Revisor de Videos" diagnostico > d.txt 2>&1
+          rc=$?
+          cat d.txt | tee -a diag-mac.txt
+          codesign --verify --deep --verbose=1 "dist/Revisor de Videos.app" 2>&1 | tee -a diag-mac.txt
+          du -sh "dist/Revisor de Videos.app" | tee -a diag-mac.txt
+          echo "::notice title=Diagnóstico Mac (app)::$(tr '\n' '|' < diag-mac.txt)"
+          exit $rc
+
+      - name: Diagnóstico do app montado (Windows)
+        if: matrix.nome == 'windows'
+        shell: bash
+        run: |
+          echo "### Windows" > diag-windows.txt
+          set +e
+          "dist/Revisor de Videos/revisor-terminal.exe" diagnostico > d.txt 2>&1
+          rc=$?
+          cat d.txt | tee -a diag-windows.txt
+          du -sh "dist/Revisor de Videos" | tee -a diag-windows.txt
+          [ $rc -eq 0 ] || echo "::error title=Diagnóstico Windows::$(tr '\n' '|' < diag-windows.txt)"
+          exit $rc
+
+      - name: Teste rápido com o app montado (Mac)
+        if: matrix.nome == 'mac'
+        shell: bash
+        run: |
+          python -m pip install opencv-python-headless
+          python tools/make_test_videos.py
+          mkdir -p build/aulas && cp tools/testdata/aula_*.mp4 build/aulas/
+          time "dist/Revisor de Videos.app/Contents/MacOS/Revisor de Videos" analisar build/aulas --cache build/cache \
+            --vinheta-inicio tools/testdata/vinheta_inicio.mp4 --vinheta-final tools/testdata/vinheta_final.mp4 \
+            --nome-tarja "Maria Clara Souza" --sem-fala 2>&1 | tail -2 | tee -a diag-mac.txt
+          python tools/evaluate.py build/cache tools/testdata > aval.txt
+          grep -vE "^\s+(OK|--)" aval.txt | grep -vE "^\s*$" | tee -a diag-mac.txt
+
+      - name: Compactar (Mac)
+        if: matrix.nome == 'mac'
+        run: |
+          # nome fixo: o link ".../releases/latest/download/Revisor-de-Videos-mac.zip" sempre baixa a versão oficial mais nova
+          ditto -c -k --sequesterRsrc --keepParent "dist/Revisor de Videos.app" "Revisor-de-Videos-mac.zip"
+          ls -la *.zip | tee -a diag-mac.txt
+          echo "::notice title=Diagnóstico Mac::$(tr '\n' '|' < diag-mac.txt)"
+
+      - name: Compactar (Windows)
+        if: matrix.nome == 'windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "dist/Revisor de Videos" -DestinationPath "Revisor-de-Videos-windows.zip"
+          Get-ChildItem *.zip | ForEach-Object { "$($_.Name) $([math]::Round($_.Length / 1MB)) MB" } | Tee-Object -Append -FilePath diag-windows.txt
+          $d = (Get-Content diag-windows.txt) -join '|'
+          Write-Output "::notice title=Diagnóstico Windows::$d"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: app-${{ matrix.nome }}
+          path: |
+            *.zip
+            diag-*.txt
+          retention-days: 1
+          compression-level: 0
+
+  publicar:
+    needs: montar
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: pacotes
+          merge-multiple: true
+
+      - name: Publicar em Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -la pacotes
+          # etiqueta v1.2.3 = versão OFICIAL (é a que o link "latest" entrega para as equipes);
+          # montagem pelo botão Run workflow = versão de TESTE (pré-lançamento, ninguém recebe sem querer)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"; TIT="Revisor de Vídeos ${TAG#v}"; PRE="--latest"
+            AVISO="Versão oficial. Mac: baixe Revisor-de-Videos-mac.zip · Windows: baixe Revisor-de-Videos-windows.zip."
+          else
+            TAG="montagem-${GITHUB_RUN_NUMBER}"; TIT="Montagem ${GITHUB_RUN_NUMBER} (teste)"; PRE="--prerelease"
+            AVISO="Versão de TESTE, ainda não liberada para as equipes. Use a versão oficial mais recente."
+          fi
+          {
+            echo "$AVISO"
+            echo
+            echo "Mac (Apple Silicon, macOS 11 ou mais novo) e Windows 10/11 (64 bits). Como baixar, instalar e usar: veja o [Guia](https://github.com/$GITHUB_REPOSITORY/blob/main/GUIA.md)."
+            echo
+            echo "<details><summary>Diagnóstico da montagem</summary>"
+            echo
+            echo '```'
+            cat pacotes/diag-*.txt 2>/dev/null
+            echo '```'
+            echo "</details>"
+          } > notas.md
+          # erro vira anotação (dá para ler pela API sem abrir o log)
+          if ! gh release create "$TAG" pacotes/*.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+                 --title "$TIT" $PRE --notes-file notas.md > saida.txt 2>&1; then
+            echo "::error title=Release::$(tail -c 1500 saida.txt | tr '\n' ' ')"
+            exit 1
+          fi
+          cat saida.txt

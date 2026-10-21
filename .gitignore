@@ -1,0 +1,12 @@
+__pycache__/
+.pytest_cache/
+tools/testdata/
+cache/
+bin/
+*.mp4
+*.mov
+revisor/data/models/*.bin
+build/
+models/
+dist/
+*.spec.bak
