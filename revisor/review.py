@@ -52,9 +52,20 @@ def new_review(folder: str | Path) -> dict:
         "entrega_locked": False,
         "sensitivity": 55, "group_gap_s": 8.0,
         "report": None,                   # resumo do txt de tempo (números do txt)
-        "videos": [],                     # [{id, file, duration, editor, comments, round}]
+        "videos": [],                     # [{id, file, duration, editor, comments, general, round}]
         "created": now_text(), "updated": now_text(),
     }
+
+
+def general_of(v: dict) -> dict | None:
+    """Comentário geral do vídeo (sem tempo: "aumentar o áudio geral", "ajustar a cor da pele")."""
+    g = v.get("general")
+    return g if isinstance(g, dict) and (g.get("text") or "").strip() else None
+
+
+def comment_total(v: dict) -> int:
+    """Comentários do vídeo: os de cada frame + o geral (se houver)."""
+    return len(v.get("comments", []) or []) + (1 if general_of(v) else 0)
 
 
 def path_for(reviews_root: Path, project: str) -> Path:
@@ -103,7 +114,7 @@ def list_saved(reviews_root: Path) -> list[dict]:
             "project": r.get("project"), "professor": r.get("professor"), "curso": r.get("curso"),
             "disciplina": r.get("disciplina"), "entrega": r.get("entrega"), "folder": r.get("folder"),
             "videos": len(r.get("videos", [])),
-            "comments": sum(len(v.get("comments", [])) for v in r.get("videos", [])),
+            "comments": sum(comment_total(v) for v in r.get("videos", [])),
             "updated": r.get("updated"),
         })
     out.sort(key=lambda x: x.get("updated") or "", reverse=True)

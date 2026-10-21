@@ -610,6 +610,20 @@ recomeça), com um botão pequeno "Recomeçar a análise desta pasta com estas e
 Montagem-11 (21/10): Mac e Windows TUDO OK no diagnóstico; sintéticos no Mac do GitHub 40/41 (o mesmo
 +7 frames da imagem congelada de antes, x264 diferente). Falta o JP testar a fila no Mac.
 
+## Comentário geral do vídeo (21/10/2026, pedido do JP)
+- Um por vídeo, sem tempo ("aumentar o áudio geral", "mexer na cor da pele"): caixa "Comentário geral do
+  vídeo" no painel da direita da revisão (salva sozinho 0,7 s depois de parar de digitar; vazio apaga;
+  botão Copiar → "Vídeo 01 · Geral · texto"). Rota POST /api/general {id, text}.
+- Guardado na revisão em video["general"] = {text, selected, created, updated} (review.general_of,
+  review.comment_total contam o geral junto).
+- Resumo final: vem primeiro em cada vídeo (export.comment_rows: frame None, tc "Geral", cid "g<id>",
+  with_frame sempre falso); marcar/desmarcar pelo final/mark (o "Todos" pega também).
+- SRT: bloco no começo do vídeo (frame 0) com "CORRIGIR: (geral) texto"; desmarcado não entra.
+- Pacote: vai no revisao.json (limpo em _clean_video); juntar → vale o mais recente.
+- Testes: tests/test_geral.py.
+- Junto: render() do app.js agora desenha uma tela de cada vez (trocar de tela muito rápido misturava
+  duas telas e deixava os atalhos da antiga ligados — visto nas capturas).
+
 ## Open source, versões e distribuição (21/10/2026)
 - O JP abriu o código (a TI da PUC aprovou em nome dele) para a TI conferir e para as equipes de outras
   2 unidades baixarem direto do GitHub. Licença GPL-3.0-or-later (o FFmpeg com libx264 dentro do app é

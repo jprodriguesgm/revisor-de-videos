@@ -214,7 +214,7 @@ class App:
                 "disciplina": prev.get("disciplina"), "entrega": prev.get("entrega"),
                 "entrega_locked": prev.get("entrega_locked"), "nome_tarja": prev.get("nome_tarja"),
                 "updated": prev.get("updated"),
-                "comments": sum(len(v.get("comments", [])) for v in prev.get("videos", [])),
+                "comments": sum(review.comment_total(v) for v in prev.get("videos", [])),
                 "sensitivity": prev.get("sensitivity"), "group_gap_s": prev.get("group_gap_s")},
             "suggest": {"professor": prof, "curso": (prev or {}).get("curso") or "",
                         "disciplina": (prev or {}).get("disciplina") or "",
@@ -553,7 +553,7 @@ class App:
             row = summary.video_row(a, sens, spell=rev.get("spell", True), dismissed=v.get("dismissed")) if a else None
             rows.append({"n": k + 1, "id": v["id"], "file": v["file"], "duration": v["duration"],
                          "editor": v.get("editor"), "missing": v.get("missing", False),
-                         "comments": len(v.get("comments", [])), "row": row})
+                         "comments": review.comment_total(v), "row": row})
         if noted:
             self.save_review()
         ready = [r["row"] for r in rows if r["row"]]
@@ -615,7 +615,7 @@ class App:
             a2 = self.ready_analysis(x["id"])
             noted |= self._note_fps(x, a2)
             tabs.append({"n": k + 1, "id": x["id"], "file": x["file"], "missing": x.get("missing", False),
-                         "ready": a2 is not None, "comments": len(x.get("comments", [])),
+                         "ready": a2 is not None, "comments": review.comment_total(x),
                          "warnings": len(summary.warnings_of(a2, spell_on, x.get("dismissed"))) if a2 else 0})
         if noted:
             self.save_review()
@@ -626,6 +626,7 @@ class App:
             "n": n, "total": len(vids), "tabs": tabs,
             "video": {k: v.get(k) for k in ("id", "file", "duration", "editor", "missing", "round")},
             "comments": sorted(v.get("comments", []), key=lambda c: c["frame"]),
+            "general": (review.general_of(v) or {}).get("text", ""),
             "editors": appdata.active_editors(s),
             "time_format": s.get("time_format", "seconds"),
             "clip_half_s": frames.clip_half(s.get("clip_half_s")),
@@ -700,6 +701,25 @@ class App:
             cs.sort(key=lambda c: c["frame"])
             self.save_review()
         return {"ok": True, "comments": cs}
+
+    def set_general(self, body: dict) -> dict:
+        """Comentário geral do vídeo (sem tempo). Texto vazio apaga."""
+        v = self._rev_video(body)
+        text = (body.get("text") or "").strip()
+        if len(text) > 4000:
+            raise ApiError("Comentário longo demais.")
+        now = review.now_text()
+        with self.lock:
+            g = v.get("general") if isinstance(v.get("general"), dict) else None
+            if not text:
+                v.pop("general", None)
+            elif g is None or not (g.get("text") or "").strip():
+                v["general"] = {"text": text, "selected": True, "created": now, "updated": now}
+            elif g.get("text") != text:
+                g["text"] = text
+                g["updated"] = now
+            self.save_review()
+        return {"ok": True, "general": (review.general_of(v) or {}).get("text", "")}
 
     def dismiss(self, body: dict) -> dict:
         """"Ignorar" um aviso neste vídeo (ou desfazer). Some da contagem, continua visível apagado."""
@@ -920,7 +940,7 @@ class App:
             "review": {k: rev.get(k) for k in ("project", "professor", "curso", "disciplina", "entrega",
                                                "entrega_locked", "report", "updated")},
             "videos": [{"n": k + 1, "id": v["id"], "file": v["file"], "missing": v.get("missing", False),
-                        "editor": v.get("editor"), "comments": len(v.get("comments", []))}
+                        "editor": v.get("editor"), "comments": review.comment_total(v)}
                        for k, v in enumerate(rev["videos"])],
             "rows": rows,
             "hours": export.editor_hours(rev),
@@ -937,6 +957,11 @@ class App:
         changed = 0
         with self.lock:
             for v in rev["videos"]:
+                g = review.general_of(v)
+                if g and (target == "all" or target == export.general_cid(v)):
+                    if "selected" in body:            # o geral não tem frame: só marcar/desmarcar
+                        g["selected"] = bool(body["selected"])
+                    changed += 1
                 for c in v.get("comments", []):
                     if target != "all" and c.get("cid") != target:
                         continue
@@ -1675,6 +1700,8 @@ class Handler(BaseHTTPRequestHandler):
         # ---- tela de revisão (etapa 4)
         if ep == "comment":
             return self._json(APP.set_comment(body))
+        if ep == "general":
+            return self._json(APP.set_general(body))
         if ep == "dismiss":
             return self._json(APP.dismiss(body))
         if ep == "accept":

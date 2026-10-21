@@ -146,7 +146,21 @@ function drawSteps(active) {
   });
 }
 
+// Uma tela de cada vez: se outra for pedida enquanto uma ainda carrega (trocar de aba ou apertar N
+// rápido), a nova espera a anterior terminar e só a última pedida é desenhada. Antes as duas podiam
+// se misturar na página, e os atalhos da tela antiga continuavam ligados.
+let renderBusy = null, renderAgain = false;
 async function render() {
+  if (renderBusy) { renderAgain = true; return renderBusy; }
+  renderBusy = (async () => {
+    try {
+      do { renderAgain = false; await renderNow(); } while (renderAgain);
+    } finally { renderBusy = null; }
+  })();
+  return renderBusy;
+}
+
+async function renderNow() {
   clearInterval(poll);
   poll = null;
   if (screenCleanup) {

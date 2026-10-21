@@ -59,7 +59,7 @@ async function copyComments(rows, withFrame) {
   if (!rows.length) { toast("Nenhum comentário para copiar.", true); return; }
   const lineOf = (r) => `Vídeo ${pad(r.n)} · ${r.tc} · ${r.text}`;
   const text = rows.map(lineOf).join("\n");
-  const anyFrame = rows.some((r) => withFrame(r));
+  const anyFrame = rows.some((r) => withFrame(r) && !r.general);
   if (!anyFrame || !window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) {
     try {
       await navigator.clipboard.writeText(text);
@@ -72,7 +72,7 @@ async function copyComments(rows, withFrame) {
     const parts = [];
     for (const r of rows) {
       parts.push(`<p style="margin:0 0 6px">${escHtml(lineOf(r)).replace(/\n/g, "<br>")}</p>`);
-      if (withFrame(r)) {
+      if (withFrame(r) && !r.general) {
         let u = null;
         try { u = await commentImage(r); } catch (e) { u = null; }
         if (u) parts.push(`<p style="margin:0 0 16px"><img src="${u}" width="640" alt="Vídeo ${pad(r.n)} · ${escHtml(r.tc)}"></p>`);
@@ -128,15 +128,16 @@ async function screenFinal(root) {
       return;
     }
     fill(list, rows.map((r) => h("div", { class: "f-row" + (r.selected ? "" : " off") },
-      checkbox(r.selected, `Incluir o comentário do vídeo ${pad(r.n)} em ${r.tc}`, (on) => mark(r.cid, { selected: on })),
-      r.with_frame
+      checkbox(r.selected, r.general ? `Incluir o comentário geral do vídeo ${pad(r.n)}` : `Incluir o comentário do vídeo ${pad(r.n)} em ${r.tc}`,
+        (on) => mark(r.cid, { selected: on })),
+      r.general ? h("div", { class: "f-th none gen", text: "geral" }) : r.with_frame
         ? h("div", { class: "f-th" }, h("img", { src: `/api/cframe.jpg?id=${r.vid}&f=${r.frame}&s=thumb`, alt: "Frame do comentário",
             loading: "lazy", onerror: (e) => { e.target.replaceWith(h("span", { class: "f-noimg", text: "sem imagem neste computador" })); } }))
         : h("div", { class: "f-th none", text: "sem imagem" }),
       h("a", { class: "f-when", href: `#/revisao/${r.n}`, title: `Abrir o vídeo ${pad(r.n)} na revisão` },
         h("b", { text: `Vídeo ${pad(r.n)}` }), h("span", { class: "mono", text: r.tc })),
       h("span", { class: "f-text", text: r.text }),
-      seg(r))));
+      r.general ? h("span", { class: "f-gen faint", text: "vale para o vídeo todo" }) : seg(r))));
   }
 
   // ---- coluna da direita

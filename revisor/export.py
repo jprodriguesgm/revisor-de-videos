@@ -90,11 +90,25 @@ def rate_of(v: dict) -> Rate:
         return Rate(NTSC_2997)
 
 
+GENERAL_TC = "Geral"          # no lugar do tempo: "Vídeo 01 · Geral · aumentar o áudio geral"
+
+
+def general_cid(v: dict) -> str:
+    return "g" + str(v["id"])
+
+
 def comment_rows(rev: dict, style: str = "seconds") -> list[dict]:
     """Todos os comentários da revisão, na ordem dos vídeos e do tempo (para o Resumo final)."""
     rows = []
     for k, v in enumerate(rev.get("videos", [])):
         r = rate_of(v)
+        g = review.general_of(v)
+        if g:       # comentário geral: vem primeiro, sem tempo e sem frame
+            rows.append({
+                "cid": general_cid(v), "vid": v["id"], "n": k + 1, "file": v["file"], "frame": None, "general": True,
+                "tc": GENERAL_TC, "seconds": None, "text": g["text"], "label": "geral",
+                "selected": bool(g.get("selected", True)), "with_frame": False, "missing": bool(v.get("missing", False)),
+            })
         for c in sorted(v.get("comments", []), key=lambda c: c["frame"]):
             rows.append({
                 "cid": c.get("cid"), "vid": v["id"], "n": k + 1, "file": v["file"], "frame": int(c["frame"]),
@@ -129,12 +143,14 @@ def srt_text(comments: list[dict], rate: Rate, block_s: float = 3, prefix: str =
     cs = sorted(comments, key=lambda c: c["frame"])
     out = []
     for i, c in enumerate(cs):
-        start = rate.seconds_of(int(c["frame"]))
+        start = rate.seconds_of(int(c["frame"]))     # o geral está no frame 0 (começo da timeline)
         end = start + float(block_s)
         if i + 1 < len(cs):
             end = min(end, rate.seconds_of(int(cs[i + 1]["frame"])) - 0.001)
         end = max(end, start + 0.001)
         body = _srt_body(c.get("text", ""))
+        if c.get("general"):
+            body = f"(geral) {body}"
         text = f"{prefix.strip()} {body}".strip() if prefix and prefix.strip() else body
         out.append(f"{i + 1}\n{timecode.fmt_srt(start)} --> {timecode.fmt_srt(end)}\n{text}\n")
     return "\n".join(out)
@@ -154,6 +170,9 @@ def srt_jobs(rev: dict) -> list[dict]:
     jobs = []
     for k, v in enumerate(rev.get("videos", [])):
         sel = [c for c in v.get("comments", []) if c.get("selected", True) and (c.get("text") or "").strip()]
+        g = review.general_of(v)
+        if g and g.get("selected", True):
+            sel = [{"frame": 0, "text": g["text"], "general": True}] + sel
         if sel:
             jobs.append({"n": k + 1, "video": v, "comments": sel, "name": srt_name(v["file"])})
     return jobs
@@ -309,7 +328,7 @@ def export_package(rev: dict, dest_parent: Path, frame_fn) -> dict:
     tmp.replace(folder / "revisao.json")
     (folder / "horas.txt").write_text(hours_txt(rev), encoding="utf-8")
     return {"folder": str(folder), "name": folder.name, "frames": len(frames_map), "frames_missing": missing,
-            "bytes": size, "comments": sum(len(v.get("comments", [])) for v in data.get("videos", []))}
+            "bytes": size, "comments": comment_count(data)}
 
 
 class PackageError(ValueError):
@@ -342,6 +361,10 @@ def _clean_video(v) -> dict | None:
         cc.setdefault("cid", f"{f:07d}")
         cs.append(cc)
     out["comments"] = sorted(cs, key=lambda c: c["frame"])
+    g = v.get("general")
+    gtext = str(g.get("text") or "").strip()[:4000] if isinstance(g, dict) else ""
+    out["general"] = {"text": gtext, "selected": bool(g.get("selected", True)),
+                      "created": str(g.get("created") or "")[:40], "updated": str(g.get("updated") or "")[:40]} if gtext else None
     out["dismissed"] = [str(x)[:200] for x in (v.get("dismissed") or []) if isinstance(x, (str, int))]
     ed = v.get("editor")
     out["editor"] = str(ed)[:80] if ed else None
@@ -390,13 +413,14 @@ def same_content(a: dict, b: dict) -> bool:
             out[v["id"]] = (v.get("editor") or None,
                             sorted((int(c["frame"]), (c.get("text") or "").strip(), bool(c.get("selected", True)),
                                     bool(c.get("with_frame", True))) for c in v.get("comments", [])),
-                            sorted(str(x) for x in v.get("dismissed", []) or []))
+                            sorted(str(x) for x in v.get("dismissed", []) or []),
+                            ((review.general_of(v) or {}).get("text") or "").strip())
         return out
     return sig(a) == sig(b)
 
 
 def comment_count(rev: dict | None) -> int:
-    return sum(len(v.get("comments", [])) for v in (rev or {}).get("videos", []))
+    return sum(review.comment_total(v) for v in (rev or {}).get("videos", []))
 
 
 def merge_reviews(local: dict, pkg: dict) -> dict:
@@ -422,6 +446,9 @@ def merge_reviews(local: dict, pkg: dict) -> dict:
             elif mine.get("text") != c.get("text") and (c.get("updated") or "") > (mine.get("updated") or ""):
                 mine.update(copy.deepcopy(c))
         lv["comments"].sort(key=lambda c: c["frame"])
+        pg, lg = review.general_of(pv), review.general_of(lv)       # comentário geral: vale o mais recente
+        if pg and (not lg or (lg.get("text") != pg.get("text") and (pg.get("updated") or "") > (lg.get("updated") or ""))):
+            lv["general"] = copy.deepcopy(pg)
         dis = lv.setdefault("dismissed", [])
         for k in pv.get("dismissed", []):
             if k not in dis:

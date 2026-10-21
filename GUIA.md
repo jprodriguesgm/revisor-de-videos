@@ -223,6 +223,19 @@ O comentário salva sozinho. Um comentário por frame; apagar o texto apaga o co
   frame e o texto "Vídeo 01 · 00:01:15 · comentário". Cole no e-mail, no WhatsApp ou no Trello.
 - **Copiar só o comentário:** só o texto.
 
+### Comentário geral do vídeo (sem tempo)
+
+Para pedidos que valem para o vídeo inteiro, como "Preciso que aumente o áudio geral do vídeo" ou
+"Preciso que mexa na cor da pele", use a caixa **Comentário geral do vídeo**, no painel da direita,
+abaixo dos botões. Ela é uma por vídeo, salva sozinha e aceita várias linhas.
+
+![Comentário geral do vídeo](docs/guia/19-comentario-geral.png)
+
+- **Copiar** (ao lado do título) copia "Vídeo 01 · Geral · comentário".
+- No **Resumo final**, o comentário geral aparece primeiro em cada vídeo, marcado como **Geral**.
+- No **SRT**, ele vira um bloco no começo do vídeo: "CORRIGIR: (geral) comentário".
+- Apagar o texto apaga o comentário geral.
+
 ### Ver o trecho (V) e o medidor de áudio
 
 **V** (ou **Ver momento**) toca o trecho em volta do frame. Na caixa dentro do trecho, escolha
@@ -275,9 +288,10 @@ lugar ao trocar de frame (para comparar). **Limpar pontos** tira todos.
 
 ## 6. Resumo final: mandar as correções
 
-![Resumo final](docs/guia/16-resumo-final.png)
+![Resumo final](docs/guia/20-resumo-final-geral.png)
 
-- Marque ou desmarque cada comentário e escolha **Com frame** ou **Sem frame** em cada um.
+- Marque ou desmarque cada comentário e escolha **Com frame** ou **Sem frame** em cada um. Os
+  comentários gerais aparecem primeiro em cada vídeo, com **Geral** no lugar do tempo (eles não têm frame).
 - **Copiar selecionados, como marcado** · **Todos, com frame** · **Todos, sem frame**: copia tudo
   de uma vez (texto + imagens) para colar no e-mail ou na conversa com o editor.
 - **Gerar SRT de cada vídeo:** cria um `.srt` com o mesmo nome de cada vídeo comentado, com

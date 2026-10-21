@@ -580,7 +580,45 @@ async function screenRevisao(root, arg) {
       drawWave();
     } catch (e) { toast(e.message, true); }
   }
+  // ---- comentário geral do vídeo (pedido do JP, 21/10): sem tempo, vale para o vídeo todo
+  // ("aumentar o áudio geral", "ajustar a cor da pele"). Vai para o Resumo final, a cópia e o SRT.
+  let genTimer = null, genEl = null, genSaved = null;
+  async function saveGeneral(text) {
+    try {
+      const r = await api("general", { id: vid, text });
+      V.general = r.general;
+      if (genSaved && genEl && genEl.value.trim() === (r.general || "")) genSaved.textContent = r.general ? "Salvo" : "";
+    } catch (e) { toast(e.message, true); }
+  }
+  function flushGeneral() {
+    if (genTimer && genEl) { clearTimeout(genTimer); genTimer = null; saveGeneral(genEl.value); }
+  }
+  function generalBox() {
+    genEl = h("textarea", { id: "cmt-geral", class: "rv-ta rv-ta-gen", value: V.general || "",
+      placeholder: "Vale para o vídeo todo, sem tempo. Ex.: aumentar o áudio geral; ajustar a cor da pele." });
+    genSaved = h("span", { class: "rv-saved", "aria-live": "polite", text: V.general ? "Salvo" : "" });
+    genEl.addEventListener("input", () => {
+      genSaved.textContent = "";
+      clearTimeout(genTimer);
+      const el = genEl;
+      genTimer = setTimeout(() => { genTimer = null; saveGeneral(el.value); }, 700);
+    });
+    genEl.addEventListener("blur", flushGeneral);
+    const copyGen = h("button", { class: "btn ghost small", type: "button", text: "Copiar", title: "Copiar o comentário geral",
+      onclick: async () => {
+        flushGeneral();
+        const t = genEl.value.trim();
+        if (!t) { toast("Escreva o comentário geral primeiro.", true); genEl.focus(); return; }
+        try { await navigator.clipboard.writeText(`Vídeo ${nn} · Geral · ${t}`); toast("Comentário geral copiado."); }
+        catch (e) { toast("O navegador não deixou copiar.", true); }
+      } });
+    return h("div", { class: "rv-gen" },
+      h("div", { class: "rv-gen-h" }, h("span", { class: "tt", text: "Comentário geral do vídeo" }), copyGen),
+      h("label", { for: "cmt-geral", class: "sr", text: "Comentário geral do vídeo" }), genEl,
+      h("div", { class: "rv-saved-row" }, genSaved));
+  }
   function flushComment() {
+    flushGeneral();
     if (cmtTimer && cmtEl && cmtFrame !== null) {
       clearTimeout(cmtTimer); cmtTimer = null;
       saveComment(cmtFrame, cmtEl.value);
@@ -669,6 +707,7 @@ async function screenRevisao(root, arg) {
       h("button", { class: "btn primary", onclick: () => copyFrame() }, rvIcon("copy"), "Copiar frame + comentário"),
       h("button", { class: "btn", onclick: () => copyText(), text: "Copiar só o comentário" }),
       M.has_video ? clipBtn : null,
+      generalBox(),
       listBox);
     drawCommentList();
   }
