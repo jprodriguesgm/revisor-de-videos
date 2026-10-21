@@ -6,6 +6,7 @@ Devolve o caminho escolhido, None se o usuário cancelar, ou levanta Unsupported
 """
 from __future__ import annotations
 
+import base64
 import os
 import shutil
 import string
@@ -34,15 +35,61 @@ def choose_folder(prompt: str = "Escolha a pasta", start: str | None = None) -> 
         script += ")"
         return _run_osa(script)
     if os.name == "nt":
-        ps = ("Add-Type -AssemblyName System.Windows.Forms;"
-              "$f=New-Object System.Windows.Forms.Form -Property @{TopMost=$true};"
-              "$d=New-Object System.Windows.Forms.FolderBrowserDialog;"
-              f"$d.Description='{_ps_quote(prompt)}';$d.ShowNewFolderButton=$false;"
-              + (f"$d.SelectedPath='{_ps_quote(start)}';" if start else "") +
-              "if($d.ShowDialog($f) -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
-              "Write-Output $d.SelectedPath}")
-        return _run_ps(ps)
+        return _run_ps(ps_folder_script(prompt, start))
     return _tk(lambda fd: fd.askdirectory(title=prompt, initialdir=start or None))
+
+
+# ---- Windows: a janela abria ATRÁS do navegador (visto pelo JP, 21/10/2026). O app não tem janela
+# própria, e o Windows não deixa um programa "de fundo" passar na frente. Por isso: uma janelinha
+# invisível, sempre no topo, dona da janela de escolha, e o pedido de primeiro plano pelo jeito
+# padrão do Windows (AttachThreadInput + SetForegroundWindow). Se a política da máquina não deixar
+# compilar esse pedaço (Add-Type), a janela abre do mesmo jeito (try/catch), só pode não vir na frente.
+_PS_FRONT = r"""
+Add-Type -AssemblyName System.Windows.Forms
+$f = New-Object System.Windows.Forms.Form
+$f.TopMost = $true; $f.ShowInTaskbar = $false; $f.FormBorderStyle = 'None'; $f.Opacity = 0
+$f.StartPosition = 'CenterScreen'; $f.Width = 1; $f.Height = 1
+$f.Show()
+try {
+  Add-Type -Namespace RevisorVideos -Name Janela -MemberDefinition @'
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p);
+[DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool on);
+[DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+'@
+  $fg = [RevisorVideos.Janela]::GetForegroundWindow()
+  $t1 = [RevisorVideos.Janela]::GetWindowThreadProcessId($fg, [IntPtr]::Zero)
+  $t2 = [RevisorVideos.Janela]::GetCurrentThreadId()
+  [void][RevisorVideos.Janela]::AttachThreadInput($t2, $t1, $true)
+  [void][RevisorVideos.Janela]::SetForegroundWindow($f.Handle)
+  [void][RevisorVideos.Janela]::AttachThreadInput($t2, $t1, $false)
+} catch { }
+$f.Activate()
+"""
+
+
+def _ps_lit(s: str) -> str:
+    """Texto entre aspas simples do PowerShell."""
+    return "'" + _ps_quote(s) + "'"
+
+
+def ps_folder_script(prompt: str, start: str | None = None) -> str:
+    return _PS_FRONT + (
+        "$d = New-Object System.Windows.Forms.FolderBrowserDialog\n"
+        f"$d.Description = {_ps_lit(prompt)}; $d.ShowNewFolderButton = $false\n"
+        + (f"$d.SelectedPath = {_ps_lit(start)}\n" if start else "") +
+        "$r = $d.ShowDialog($f); $f.Close()\n"
+        "if ($r -eq 'OK') { [Console]::OutputEncoding = [Text.Encoding]::UTF8; Write-Output $d.SelectedPath }\n")
+
+
+def ps_file_script(prompt: str, start: str | None, flt: str) -> str:
+    return _PS_FRONT + (
+        "$d = New-Object System.Windows.Forms.OpenFileDialog\n"
+        f"$d.Title = {_ps_lit(prompt)}; $d.Filter = {_ps_lit(flt)}\n"
+        + (f"$d.InitialDirectory = {_ps_lit(start)}\n" if start else "") +
+        "$r = $d.ShowDialog($f); $f.Close()\n"
+        "if ($r -eq 'OK') { [Console]::OutputEncoding = [Text.Encoding]::UTF8; Write-Output $d.FileName }\n")
 
 
 def choose_file(prompt: str = "Escolha o arquivo", start: str | None = None,
@@ -55,14 +102,7 @@ def choose_file(prompt: str = "Escolha o arquivo", start: str | None = None,
         return _run_osa(script)
     if os.name == "nt":
         flt = "Vídeos|" + ";".join(f"*.{e}" for e in exts) + "|Todos|*.*"
-        ps = ("Add-Type -AssemblyName System.Windows.Forms;"
-              "$f=New-Object System.Windows.Forms.Form -Property @{TopMost=$true};"
-              "$d=New-Object System.Windows.Forms.OpenFileDialog;"
-              f"$d.Title='{_ps_quote(prompt)}';$d.Filter='{_ps_quote(flt)}';"
-              + (f"$d.InitialDirectory='{_ps_quote(start)}';" if start else "") +
-              "if($d.ShowDialog($f) -eq 'OK'){[Console]::OutputEncoding=[Text.Encoding]::UTF8;"
-              "Write-Output $d.FileName}")
-        return _run_ps(ps)
+        return _run_ps(ps_file_script(prompt, start, flt))
     return _tk(lambda fd: fd.askopenfilename(title=prompt, initialdir=start or None,
                                              filetypes=[("Vídeos", " ".join(f"*.{e}" for e in exts)),
                                                         ("Todos", "*")]))
@@ -90,7 +130,9 @@ def _run_ps(ps: str) -> str | None:
     exe = shutil.which("powershell") or shutil.which("pwsh")
     if not exe:
         raise Unsupported()
-    r = subprocess.run([exe, "-NoProfile", "-STA", "-Command", ps], capture_output=True,
+    # -EncodedCommand: o script vai inteiro (várias linhas, acentos, aspas) sem problema de aspas
+    enc = base64.b64encode(ps.encode("utf-16-le")).decode("ascii")
+    r = subprocess.run([exe, "-NoProfile", "-STA", "-EncodedCommand", enc], capture_output=True,
                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if r.returncode != 0:
         raise Unsupported(r.stderr.decode("utf-8", "replace")[:200])

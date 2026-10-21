@@ -91,7 +91,7 @@ class AudioResult:
         }
 
 
-def _windows(path: str, sr: int, loud: dict, fine: dict | None = None):
+def _windows(path: str, sr: int, loud: dict, fine: dict | None = None, progress=None, duration: float | None = None):
     """Pico, soma de quadrados e contagem de amostras saturadas por janela de 10 ms.
 
     Se `fine` for um dicionário, recebe também, por janela de 1 ms, a energia
@@ -102,7 +102,11 @@ def _windows(path: str, sr: int, loud: dict, fine: dict | None = None):
     e1, h1, r1 = [], [], []
     hist = np.zeros(0)
     rest = np.zeros(0, np.float32)
+    done = 0
     for chunk in media.iter_audio(path, sr, loudness=loud):
+        done += chunk.size
+        if progress and duration:          # a barra anda na leitura do áudio (antes ficava parada em 93%)
+            progress(min(done / sr / duration, 1.0))
         x = np.concatenate([rest, chunk]) if rest.size else chunk
         m = (x.size // n) * n
         if m:
@@ -245,11 +249,13 @@ def _merge(events: list[AudioEvent], gap: float) -> list[AudioEvent]:
 
 
 def analyze(path: str, sr: int = 48000, content: tuple[float, float] | None = None,
-            speech_cuts: bool = True, video_cuts: list[float] | None = None) -> AudioResult:
-    """`content` = (início, fim) em segundos do trecho entre as vinhetas."""
+            speech_cuts: bool = True, video_cuts: list[float] | None = None,
+            progress=None, duration: float | None = None) -> AudioResult:
+    """`content` = (início, fim) em segundos do trecho entre as vinhetas.
+    `progress(0..1)` é chamado enquanto o áudio é lido (precisa de `duration`)."""
     loud: dict = {}
     fine: dict | None = {} if speech_cuts else None
-    peaks, sq, clips, n = _windows(path, sr, loud, fine)
+    peaks, sq, clips, n = _windows(path, sr, loud, fine, progress, duration)
     total = peaks.size
     dur = total * WIN
     if total == 0:

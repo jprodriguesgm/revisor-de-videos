@@ -12,6 +12,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass, field
 from fractions import Fraction
 from pathlib import Path
@@ -156,8 +157,45 @@ class YUVFrame:
 
 
 def _run_pipe(cmd: list[str]) -> subprocess.Popen:
-    return subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**7,
+    """FFmpeg com a saída (vídeo/áudio) num cano e as mensagens em outro.
+
+    As mensagens são lidas O TEMPO TODO numa linha de execução separada. Antes elas só eram
+    lidas no fim: no Windows o cano das mensagens é pequeno, enchia no meio do áudio, o FFmpeg
+    parava esperando e o app ficava esperando o FFmpeg (análise "travada em 93%", 21/10/2026).
+    """
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=10**7,
                             **_hidden_window_kwargs())
+    chunks: list[bytes] = []
+
+    def drain():
+        try:
+            for chunk in iter(lambda: proc.stderr.read(65536), b""):
+                chunks.append(chunk)
+                if len(chunks) > 64:                  # guarda só o fim (o resumo do ebur128 vem no fim)
+                    del chunks[:-48]
+        except (OSError, ValueError):
+            pass
+
+    t = threading.Thread(target=drain, name="ffmpeg-stderr", daemon=True)
+    t.start()
+    proc._rv_err = (t, chunks)          # type: ignore[attr-defined]
+    return proc
+
+
+def _finish_pipe(proc: subprocess.Popen) -> tuple[str, int]:
+    """Fecha o cano da saída, espera o FFmpeg acabar e devolve (mensagens, código de saída)."""
+    try:
+        proc.stdout.close()
+    except OSError:
+        pass
+    rc = proc.wait()
+    t, chunks = proc._rv_err            # type: ignore[attr-defined]
+    t.join(timeout=10)
+    try:
+        proc.stderr.close()
+    except OSError:
+        pass
+    return b"".join(chunks).decode(errors="ignore"), rc
 
 
 def _read_exact(stream, n: int) -> bytes | None:
@@ -212,10 +250,7 @@ def iter_yuv(path: str, width: int, height: int, *, fps: str | None = None,
                 v=arr[ysz + csz:].reshape(height // 2, width // 2),
             )
     finally:
-        proc.stdout.close()
-        err = proc.stderr.read().decode(errors="ignore")
-        proc.stderr.close()
-        rc = proc.wait()
+        err, rc = _finish_pipe(proc)
     if not got_any and use_hw and hwaccel_args():
         # algumas máquinas recusam a aceleração; tenta de novo só com CPU
         yield from iter_yuv(path, width, height, fps=fps, start=start, duration=duration, use_hw=False)
@@ -248,9 +283,7 @@ def iter_alpha(path: str, width: int, height: int) -> Iterator[np.ndarray]:
                 break
             yield np.frombuffer(buf, dtype=np.uint8).reshape(height, width)
     finally:
-        proc.stdout.close()
-        proc.stderr.close()
-        proc.wait()
+        _finish_pipe(proc)
 
 
 def read_frame_full(path: str, rate: Rate, frame: int, width: int | None = None,
@@ -380,7 +413,7 @@ def iter_audio(path: str, sample_rate: int = 48000, chunk_seconds: float = 10.0,
     # loglevel=info fica só o resumo. ("quiet" não existe no FFmpeg 4.x.)
     graph = "[0:a:0]aformat=sample_fmts=fltp,asplit=2[p][m];" \
             "[m]ebur128=peak=true:framelog=verbose[e]"
-    cmd = [ffmpeg(), "-hide_banner", "-nostdin", "-loglevel", "info", "-i", str(path),
+    cmd = [ffmpeg(), "-hide_banner", "-nostdin", "-nostats", "-loglevel", "info", "-i", str(path),
            "-filter_complex", graph,
            "-map", "[p]", "-ac", "1", "-ar", str(sample_rate), "-f", "f32le", "pipe:1",
            "-map", "[e]", "-f", "null", "-"]
@@ -396,10 +429,7 @@ def iter_audio(path: str, sample_rate: int = 48000, chunk_seconds: float = 10.0,
             got_any = got_any or usable > 0
             yield np.frombuffer(buf[:usable], dtype=np.float32)
     finally:
-        proc.stdout.close()
-        err = proc.stderr.read().decode(errors="ignore")
-        proc.stderr.close()
-        rc = proc.wait()
+        err, rc = _finish_pipe(proc)
     if not got_any and rc not in (0, None):
         # melhor avisar do que mostrar -120 dB como se fosse silêncio
         raise MediaError(f"FFmpeg não leu o áudio de {path}: {err.strip()[-400:]}")

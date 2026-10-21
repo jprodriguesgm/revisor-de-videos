@@ -175,7 +175,8 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
     # 4) áudio (sem as vinhetas nos números)
     t = time.time()
     vcuts = [rate.seconds_of(ev.frame) for ev in events if ev.kind == "cut" and ev.frame is not None]
-    aud = audio.analyze(str(path), content=(rate.seconds_of(c_first), rate.seconds_of(c_end)), video_cuts=vcuts) \
+    aud = audio.analyze(str(path), content=(rate.seconds_of(c_first), rate.seconds_of(c_end)), video_cuts=vcuts,
+                        progress=_Progress(progress, 0.93, 0.95), duration=info.duration) \
         if info.has_audio else None
     timings["audio_s"] = round(time.time() - t, 2)
     if progress:

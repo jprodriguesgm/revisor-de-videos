@@ -246,13 +246,33 @@ function browse(kind, start, onPick) {
   go(start || "");
 }
 
-/** Janela do sistema; se não der, o navegador do app. */
+/** Janela do sistema; se não der, o navegador do app.
+    Enquanto a janela do sistema está aberta, a página mostra um aviso (no Windows ela chegou a abrir
+    atrás do navegador e parecia que o app tinha travado) com o navegador de pastas do app como saída. */
 async function choose(kind, prompt, start, onPick) {
+  let gaveUp = false;
+  const what = kind === "folder" ? "a pasta" : "o arquivo";
+  const waitBox = setTimeout(() => {
+    openModal(kind === "folder" ? "Escolha a pasta na janela que abriu" : "Escolha o arquivo na janela que abriu", [
+      h("p", { style: { margin: 0 }, text: `Abri a janela do sistema para você escolher ${what}.` }),
+      h("p", { class: "muted", style: { margin: 0, fontSize: "13px" },
+        text: "Não está vendo? Ela pode ter aberto atrás do navegador: procure na barra de tarefas (Windows) ou no Dock (Mac). " +
+              "Ou use o navegador de pastas do próprio app." })],
+      [h("button", { class: "btn", type: "button", text: "Usar o navegador do app", onclick: () => {
+        gaveUp = true; closeModal(); browse(kind, start, onPick);
+      } })]);
+  }, 700);
   try {
     const r = await api("dialog", { kind, prompt, start });
+    clearTimeout(waitBox);
+    if (gaveUp) return;                   // já escolheu pelo navegador do app
+    closeModal();
     if (r.unsupported) return browse(kind, start, onPick);
     if (r.path) onPick(r.path);
   } catch (e) {
+    clearTimeout(waitBox);
+    if (gaveUp) return;
+    closeModal();
     browse(kind, start, onPick);
   }
 }

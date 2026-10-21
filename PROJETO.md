@@ -624,6 +624,21 @@ Montagem-11 (21/10): Mac e Windows TUDO OK no diagnóstico; sintéticos no Mac d
 - Junto: render() do app.js agora desenha uma tela de cada vez (trocar de tela muito rápido misturava
   duas telas e deixava os atalhos da antiga ligados — visto nas capturas).
 
+## Correções do Windows (21/10/2026, 1º uso do JP no Windows com a 1.0.0)
+- Análise "travada em 93%": 93% é o fim do OCR e o começo da leitura do áudio. O FFmpeg manda o áudio
+  por um cano (stdout) e as mensagens por outro (stderr); o app só lia as mensagens no fim. No Windows o
+  cano é pequeno: enchia, o FFmpeg parava e o app esperava para sempre (no Mac o cano é maior). Agora
+  media._run_pipe lê as mensagens o tempo todo numa linha separada (_finish_pipe fecha tudo), em todos os
+  leitores (iter_yuv, iter_alpha, iter_audio) + "-nostats" no áudio. tests/test_canos.py reproduz o
+  travamento (2 MB de mensagens) — com o código antigo o teste trava; com o novo passa.
+  A barra também anda durante a leitura do áudio (93→95%), em vez de ficar parada.
+- Janela de escolher pasta abria ATRÁS do navegador: o app não tem janela própria e o Windows não deixa
+  programa "de fundo" passar na frente. dialogs.py: janelinha invisível sempre no topo, dona da janela de
+  escolha, + AttachThreadInput/SetForegroundWindow (Add-Type, com try/catch); script enviado por
+  -EncodedCommand. A montagem do Windows confere a sintaxe e compila o Add-Type
+  (packaging/check_dialog_ps.py). E em todo sistema a página mostra "Escolha a pasta na janela que abriu"
+  com "Usar o navegador do app" enquanto a janela do sistema está aberta.
+
 ## Open source, versões e distribuição (21/10/2026)
 - O JP abriu o código (a TI da PUC aprovou em nome dele) para a TI conferir e para as equipes de outras
   2 unidades baixarem direto do GitHub. Licença GPL-3.0-or-later (o FFmpeg com libx264 dentro do app é

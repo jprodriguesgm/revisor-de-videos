@@ -167,6 +167,24 @@ jobs:
           [ $rc -eq 0 ] || echo "::error title=Diagnóstico Windows::$(tr '\n' '|' < diag-windows.txt)"
           exit $rc
 
+      # janela de escolher pasta (abria atrás do navegador, 21/10): o script tem que ser válido e o
+      # pedaço que traz a janela para a frente tem que compilar no Windows PowerShell (o que o app usa)
+      - name: Janela de escolher pasta (Windows)
+        if: matrix.nome == 'windows'
+        shell: powershell
+        run: |
+          python packaging/check_dialog_ps.py .
+          foreach ($n in 'dlg_pasta.ps1','dlg_arquivo.ps1') {
+            $err = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\$n", [ref]$null, [ref]$err)
+            if ($err) { $err | Out-String | Write-Output; Write-Output "::error title=Janela::$n com erro"; exit 1 }
+          }
+          $r = powershell -NoProfile -File .\dlg_addtype.ps1 2>&1 | Out-String
+          Write-Output $r
+          if ($r -notmatch 'Add-Type ok') { Write-Output "::error title=Janela::Add-Type não compilou: $r"; exit 1 }
+          Write-Output "janela de pasta: script ok, Add-Type ok"
+          Add-Content -Encoding ascii -Path diag-windows.txt -Value "janela de pasta: script ok, Add-Type ok"
+
       - name: Teste rápido com o app montado (Mac)
         if: matrix.nome == 'mac'
         shell: bash
