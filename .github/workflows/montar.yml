@@ -1,7 +1,8 @@
 # Monta o Revisor de Vídeos para Mac (Apple Silicon) e Windows e publica em "Releases".
 # Roda quando alguém aperta "Run workflow" (aba Actions) ou quando sobe uma etiqueta v1.2.3.
-# Repositório privado: minutos do GitHub contam (Mac conta 10x). Por isso não roda a cada push,
-# e FFmpeg/Tesseract/Whisper/modelo ficam guardados no cache entre uma montagem e outra.
+#   - "Versão oficial" vazia → "Montagem N (teste)", pré-lançamento (as equipes não recebem).
+#   - "Versão oficial" = 1.2.3 (ou etiqueta v1.2.3) → versão oficial, entregue pelo link releases/latest.
+# Não roda a cada push; FFmpeg/Tesseract/Whisper/modelo ficam no cache entre uma montagem e outra.
 name: Montar o app
 
 on:
@@ -12,6 +13,10 @@ on:
         type: choice
         options: [ambos, mac, windows]
         default: ambos
+      versao:
+        description: "Versão oficial (ex.: 1.0.0). Deixe vazio para uma versão de teste."
+        type: string
+        default: ""
   push:
     tags: ["v*"]
 
@@ -28,6 +33,18 @@ jobs:
     outputs:
       matriz: ${{ steps.m.outputs.matriz }}
     steps:
+      - name: Conferir a versão oficial
+        env:
+          VERSAO: ${{ inputs.versao }}
+        run: |
+          if [ -n "$VERSAO" ] && ! [[ "$VERSAO" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error title=Versão::Use o formato 1.2.3 (só números e pontos), sem o v."
+            exit 1
+          fi
+          if [ -n "$VERSAO" ] && [ "${{ inputs.sistemas }}" != "ambos" ]; then
+            echo "::error title=Versão::Versão oficial sai sempre para Mac e Windows juntos (escolha ambos)."
+            exit 1
+          fi
       - id: m
         run: |
           MAC='{"os":"macos-14","nome":"mac"}'; WIN='{"os":"windows-2022","nome":"windows"}'
@@ -93,12 +110,14 @@ jobs:
           python -m pip install --force-reinstall --no-deps wheels11/numpy-*.whl
           python -c "import numpy; print('numpy', numpy.__version__, numpy.__file__)"
 
-      # versão oficial (etiqueta v1.2.3): o app leva o número da etiqueta
-      - name: Versão da etiqueta
-        if: startsWith(github.ref, 'refs/tags/v')
+      # versão oficial (etiqueta v1.2.3 ou campo "Versão oficial"): o app leva esse número
+      - name: Versão oficial
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.versao != ''
         shell: bash
+        env:
+          VERSAO: ${{ inputs.versao }}
         run: |
-          VER="${GITHUB_REF#refs/tags/v}"
+          VER="${VERSAO:-${GITHUB_REF#refs/tags/v}}"
           python -c "import re,sys; p='revisor/__init__.py'; s=open(p,encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'__version__ = \".*\"', '__version__ = \"'+sys.argv[1]+'\"', s))" "$VER"
           python -c "import revisor; print('versão', revisor.__version__)"
 
@@ -199,12 +218,14 @@ jobs:
       - name: Publicar em Releases
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSAO: ${{ inputs.versao }}
         run: |
           ls -la pacotes
-          # etiqueta v1.2.3 = versão OFICIAL (é a que o link "latest" entrega para as equipes);
-          # montagem pelo botão Run workflow = versão de TESTE (pré-lançamento, ninguém recebe sem querer)
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"; TIT="Revisor de Vídeos ${TAG#v}"; PRE="--latest"
+          # versão OFICIAL (etiqueta v1.2.3 ou campo "Versão oficial"): é a que o link "latest" entrega;
+          # sem versão = TESTE (pré-lançamento, ninguém recebe sem querer)
+          if [ -n "$VERSAO" ] || [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            if [ -n "$VERSAO" ]; then TAG="v$VERSAO"; else TAG="${GITHUB_REF#refs/tags/}"; fi
+            TIT="Revisor de Vídeos ${TAG#v}"; PRE="--latest"
             AVISO="Versão oficial. Mac: baixe Revisor-de-Videos-mac.zip · Windows: baixe Revisor-de-Videos-windows.zip."
           else
             TAG="montagem-${GITHUB_RUN_NUMBER}"; TIT="Montagem ${GITHUB_RUN_NUMBER} (teste)"; PRE="--prerelease"

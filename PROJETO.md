@@ -630,7 +630,8 @@ Montagem-11 (21/10): Mac e Windows TUDO OK no diagnóstico; sintéticos no Mac d
   GPL); licenças de cada peça em LICENCAS-DE-TERCEIROS.md.
 - Repositório público novo, sem histórico; o privado antigo (com notas e nomes reais) virou arquivo.
 - Dois tipos de Release: "Montagem N (teste)" = pré-lançamento (Run workflow; o JP testa primeiro) e
-  "Revisor de Vídeos X.Y.Z" = oficial (etiqueta vX.Y.Z; o workflow grava o número em revisor/__version__).
+  "Revisor de Vídeos X.Y.Z" = oficial (campo "Versão oficial" do Run workflow ou etiqueta vX.Y.Z; o
+  workflow grava o número em revisor/__version__ e cria a etiqueta). 1.0.0 saiu em 21/10/2026.
 - Zips com nome fixo (Revisor-de-Videos-mac.zip / -windows.zip): links permanentes
   github.com/jprodriguesgm/revisor-de-videos/releases/latest/download/Revisor-de-Videos-mac.zip (e -windows).
 - A versão do app aparece no fim do menu de Configurações.
@@ -864,9 +865,11 @@ Limites conhecidos da etapa 2:
 - Como trabalhar numa conversa nova: o repositório é github.com/jprodriguesgm/revisor-de-videos (PÚBLICO).
   Ler PROJETO.md; testar (pytest + tools/ui_smoke.py + tools/ui_novidades.py); montar SEMPRE "ambos".
   Versão de TESTE: aba Actions → Run workflow (ou API workflow_dispatch com sistemas=ambos) → Release
-  "Montagem N (teste)", pré-lançamento. Versão OFICIAL (o JP aprovou o teste): etiqueta vX.Y.Z no commit
-  testado (git tag v1.1.0 && git push origin v1.1.0) → Release "Revisor de Vídeos X.Y.Z", que o link
-  /releases/latest entrega às equipes. Atualizar o GUIA.md quando uma função mudar.
+  "Montagem N (teste)", pré-lançamento. Versão OFICIAL (o JP aprovou o teste, no MESMO commit testado):
+  Run workflow com o campo "Versão oficial" = X.Y.Z (API: inputs[versao]=1.1.0, sistemas=ambos) → Release
+  "Revisor de Vídeos X.Y.Z" com a etiqueta vX.Y.Z, que o link /releases/latest entrega às equipes.
+  (O proxy do ambiente do Claude não deixa enviar etiquetas por git push nem pela API; por isso o campo.)
+  Atualizar o GUIA.md quando uma função mudar.
 - Começar uma conversa nova a cada etapa (ler só este arquivo) para gastar menos.
 
 ## Código (pasta revisor/)

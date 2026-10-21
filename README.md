@@ -71,9 +71,9 @@ Python. As decisões do projeto estão em [PROJETO.md](PROJETO.md).
 - Só para gerar os vídeos de teste: `opencv-python`.
 
 ### Montar o app
-GitHub → aba **Actions** → "Montar o app" → **Run workflow**: sai uma versão de **teste**
-("Montagem N (teste)", pré-lançamento). Uma etiqueta `vX.Y.Z` (`git tag v1.1.0 && git push origin v1.1.0`)
-monta a versão **oficial**, que o link `releases/latest` entrega. Os zips têm nome fixo:
+GitHub → aba **Actions** → "Montar o app" → **Run workflow**. Com o campo **Versão oficial** vazio sai
+uma versão de **teste** ("Montagem N (teste)", pré-lançamento). Com `1.1.0` no campo (ou uma etiqueta
+`v1.1.0`) sai a versão **oficial**, que o link `releases/latest` entrega. Os zips têm nome fixo:
 `Revisor-de-Videos-mac.zip` e `Revisor-de-Videos-windows.zip`.
 Na mão (no próprio sistema):
 
