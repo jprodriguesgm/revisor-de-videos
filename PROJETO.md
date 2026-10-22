@@ -873,7 +873,15 @@ Limites conhecidos da etapa 2:
   "Etapa 6". Falta o JP testar no Mac (casa e trabalho) e no Windows com as aulas reais.
 - Pedidos do JP de 21/10 (fila de pastas, ↑ ↓ nos cortes, Próxima aula, abas, trecho com duração,
   medidor de áudio) — feitos (21/10). Ver "Pedidos do JP depois do uso no dia a dia".
-- Próxima: o JP testar a fila no Mac; pendentes: juntar avisos de imagem
+- ONDE PARAMOS (22/10/2026): versão oficial = 1.0.0 (Mac testado pelo JP: "perfeito"). A "Montagem 3
+  (teste)" corrige os 2 problemas do Windows (análise travada em 93% e janela de pasta atrás do navegador;
+  ver "Correções do Windows") e ESPERA o teste do JP no Windows. Se ele aprovar: Run workflow com
+  sistemas=ambos e versao=1.0.1 no commit testado. Se a janela ainda abrir atrás: no Windows, ir direto
+  para o navegador de pastas do app. O JP tem novas sugestões (conversa nova).
+- Licenças (pergunta do JP, 21/10): tudo da LICENCAS-DE-TERCEIROS.md permite uso comercial; GPL obriga
+  só a manter o código aberto (já está). Único ponto: patentes do H.264 (Via LA; 100 mil unidades/ano
+  grátis, cobrança só para quem vende) — irrelevante para uso interno/gratuito.
+- Pendentes antigos: juntar avisos de imagem
   congelada muito próximos (no Mac do GitHub saíram 2 a 7 frames de distância), "texto saiu" logo depois
   da vinheta de abertura (alarme falso), "ensinar formato" (aula de TV), END_TOLERANCE nas configurações,
   GPU no Windows para a fala se ficar lenta.
