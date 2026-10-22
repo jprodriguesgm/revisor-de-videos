@@ -512,8 +512,9 @@ Mac do GitHub (macOS 14.8, máquina virtual M1): análise das 2 aulas sintética
 na máquina virtual) — medir no Mac de verdade.
 Minutos: com o cache, cada montagem leva ~7 min no Mac e ~8 min no Windows (ao rodar dá para escolher
 só "mac" ou só "windows").
-REGRA DO JP (19/10): toda correção/mudança sai SEMPRE para Mac E Windows juntos (montar com "ambos";
-a Release tem os dois zips). Não montar só um sistema. Mudar packaging/build_deps.py refaz os programas (~20–30 min).
+REGRA DO JP (atualizada 22/10): versões de TESTE podem ser montadas separadas (só "windows" ou só "mac",
+cada uma vira uma Release "Montagem N (teste)"); o JP testa e autoriza cada sistema. A versão OFICIAL é
+sempre montada com "ambos" (Mac e Windows juntos, mesmo commit), só depois que o JP autorizar os dois. Mudar packaging/build_deps.py refaz os programas (~20–30 min).
 
 Testes portáveis: tests/conftest.py (FFmpeg do app; sem libx264 usa MPEG-4; pasta "Ana 19-10" no
 Windows porque ":" não pode), tests/test_life.py. tools/make_test_videos.py usa Arial no Mac/Windows.
