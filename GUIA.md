@@ -11,14 +11,15 @@ Tudo roda no seu computador: **nenhum vídeo, frame ou comentário sai dele**.
 2. [Primeira vez: equipe e vinhetas](#2-primeira-vez-equipe-e-vinhetas)
 3. [O essencial: o dia a dia em 5 passos](#3-o-essencial-o-dia-a-dia-em-5-passos)
 4. [Fila de pastas](#4-fila-de-pastas)
-5. [Tela de revisão: todas as funções](#5-tela-de-revisão-todas-as-funções)
-6. [Resumo final: mandar as correções](#6-resumo-final-mandar-as-correções)
-7. [Levar a revisão para outro computador](#7-levar-a-revisão-para-outro-computador)
-8. [Relatório do mês](#8-relatório-do-mês)
-9. [Configurações](#9-configurações)
-10. [Atalhos de teclado](#10-atalhos-de-teclado)
-11. [Atualizar o app](#11-atualizar-o-app)
-12. [Problemas comuns](#12-problemas-comuns)
+5. [Vídeo que voltou para a 2ª revisão (analisar de novo)](#5-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo)
+6. [Tela de revisão: todas as funções](#6-tela-de-revisão-todas-as-funções)
+7. [Resumo final: mandar as correções](#7-resumo-final-mandar-as-correções)
+8. [Levar a revisão para outro computador](#8-levar-a-revisão-para-outro-computador)
+9. [Relatório do mês](#9-relatório-do-mês)
+10. [Configurações](#10-configurações)
+11. [Atalhos de teclado](#11-atalhos-de-teclado)
+12. [Atualizar o app](#12-atualizar-o-app)
+13. [Problemas comuns](#13-problemas-comuns)
 
 ---
 
@@ -165,14 +166,14 @@ um nome e clica em **Aplicar a todos**).
 
 Uma aba por vídeo. Use **→** para ir de um item marcado para o próximo, olhe o frame e, se algo
 precisar ser corrigido, aperte **C** e escreva o comentário (salva sozinho). Detalhes na
-[seção 5](#5-tela-de-revisão-todas-as-funções).
+[seção 6](#6-tela-de-revisão-todas-as-funções).
 
 ![Tela de revisão](docs/guia/08-revisao.png)
 
 ### Passo 5 — Resumo final
 
 Todos os comentários juntos. Copie para mandar ao editor (com ou sem as imagens) ou gere um **SRT**
-para ele importar na timeline. Detalhes na [seção 6](#6-resumo-final-mandar-as-correções).
+para ele importar na timeline. Detalhes na [seção 7](#7-resumo-final-mandar-as-correções).
 
 ---
 
@@ -207,7 +208,44 @@ próxima pasta da fila.
 
 ---
 
-## 5. Tela de revisão: todas as funções
+## 5. Vídeo que voltou para a 2ª revisão (analisar de novo)
+
+Quando o editor corrige um vídeo e ele volta para você, o app precisa analisar a versão nova. Na
+maioria das vezes isso acontece sozinho. Quando não acontece, use **Analisar de novo**.
+
+**Quando o app analisa sozinho:**
+- o vídeo corrigido ficou com **outra duração**: o app trata como a **rodada 2** daquele vídeo
+  (herda o editor; os comentários da versão anterior ficam guardados com ela);
+- o vídeo corrigido tem o **mesmo nome e a mesma duração**, mas é outro arquivo (por exemplo, só uma
+  palavra de um slide foi corrigida): o app percebe que o arquivo mudou e analisa de novo.
+
+**Quando usar o botão:** se o vídeo aparecer como "Análise anterior" ou "Pronto" na hora, mas você
+sabe que ele foi corrigido, ou se os frames da revisão ainda mostram o erro antigo.
+
+**Onde fica:**
+- **Tela de Análise:** o botão **↻** no fim da linha de cada vídeo pronto.
+
+![Botão analisar de novo na tela de análise](docs/guia/21-analisar-de-novo-botao.png)
+
+- **Tela de revisão:** **Ajustes** (barra de cima) → **Analisar de novo**, no fim da janela.
+
+![Analisar de novo nos Ajustes da revisão](docs/guia/23-analisar-de-novo-ajustes.png)
+
+Na janela, escolha **Só o vídeo NN** ou **Todos os vídeos da pasta**:
+
+![Janela analisar de novo](docs/guia/22-analisar-de-novo-janela.png)
+
+**O que acontece:**
+- o app refaz a análise do zero (frames, texto na tela, áudio e falas), sem usar o que estava
+  guardado; a aba do vídeo mostra o progresso e abre sozinha quando termina;
+- se outra pasta estiver analisando, este vídeo é o **próximo** da fila.
+
+**O que NÃO muda:** editor, comentários, entrega da edição e as **horas do mês**. O vídeo continua
+contando **uma vez só** no relatório do mês, no mês da entrega.
+
+---
+
+## 6. Tela de revisão: todas as funções
 
 ### Andar pelo vídeo
 
@@ -309,7 +347,7 @@ lugar ao trocar de frame (para comparar). **Limpar pontos** tira todos.
 
 ---
 
-## 6. Resumo final: mandar as correções
+## 7. Resumo final: mandar as correções
 
 ![Resumo final](docs/guia/20-resumo-final-geral.png)
 
@@ -325,7 +363,7 @@ lugar ao trocar de frame (para comparar). **Limpar pontos** tira todos.
 
 ---
 
-## 7. Levar a revisão para outro computador
+## 8. Levar a revisão para outro computador
 
 Em **Resumo final → Salvar e exportar revisão**:
 
@@ -337,7 +375,7 @@ Em **Resumo final → Salvar e exportar revisão**:
 
 ---
 
-## 8. Relatório do mês
+## 9. Relatório do mês
 
 Botão **Relatório do mês** no topo. Horas de vídeo editado por editor, por curso e por semana, com
 o tempo gravado e o aproveitamento. O mês vem da **data de entrega da edição**, não do dia da revisão.
@@ -350,7 +388,7 @@ Google Drive) e indique essa pasta em **Configurações → Pastas**.
 
 ---
 
-## 9. Configurações
+## 10. Configurações
 
 ![Configurações](docs/guia/18-configuracoes.png)
 
@@ -368,7 +406,7 @@ Google Drive) e indique essa pasta em **Configurações → Pastas**.
 
 ---
 
-## 10. Atalhos de teclado
+## 11. Atalhos de teclado
 
 Na tela de revisão:
 
@@ -391,7 +429,7 @@ Na tela de revisão:
 
 ---
 
-## 11. Atualizar o app
+## 12. Atualizar o app
 
 1. Baixe de novo pelo link direto da [seção 1](#baixar-pelo-github) (ele sempre entrega a versão
    oficial mais nova).
@@ -403,7 +441,7 @@ Para saber qual versão você tem: **Configurações**, no fim do menu da esquer
 
 ---
 
-## 12. Problemas comuns
+## 13. Problemas comuns
 
 - **"O Revisor de Vídeos não está aberto"** na página: o app fechou (por exemplo, a aba ficou
   fechada por um tempo). Abra o app de novo com dois cliques.
@@ -413,7 +451,8 @@ Para saber qual versão você tem: **Configurações**, no fim do menu da esquer
   se o navegador não tocar, gera um trecho compatível (leva alguns segundos).
 - **Nenhum editor para escolher:** cadastre a equipe em **Configurações → Equipe**.
 - **O vídeo voltou corrigido, mas aparecem os frames antigos:** use **Analisar de novo** (↻ na tela
-  de análise, ou Ajustes → Analisar de novo na revisão).
+  de análise, ou Ajustes → Analisar de novo na revisão). Veja a
+  [seção 5](#5-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo).
 - **Windows: "Falas: no processador · a placa de vídeo não funcionou":** atualize o driver da placa
   de vídeo (site da Nvidia, Intel ou AMD) e abra o app de novo. A análise funciona igual, só mais devagar.
 - **Algo estranho aconteceu:** o arquivo `revisor.log` mostra o que o app fez. Ele fica em
