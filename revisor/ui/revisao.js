@@ -2,7 +2,7 @@
    Usa as utilidades de app.js (h, api, toast, icon, pad, plural, stem, vlabel, openModal…).
    Atalhos: ← → (itens) · ↑ ↓ (cortes) · Shift+← → (1 frame) · C comentar · V ver o trecho ·
    G gráficos · P conta-gotas · F tela cheia · ⌘C/Ctrl+C copiar · + − zoom · Z caber/100% ·
-   N próxima aula · Esc fecha. */
+   T copiar para o Trello · N próxima aula · Esc fecha. */
 "use strict";
 
 // estado que continua ao trocar de item e de vídeo
@@ -705,6 +705,8 @@ async function screenRevisao(root, arg) {
       h("label", { for: "cmt", class: "sr", text: "Comentário" }), cmtEl,
       h("div", { class: "rv-saved-row" }, savedEl),
       h("button", { class: "btn primary", onclick: () => copyFrame() }, rvIcon("copy"), "Copiar frame + comentário"),
+      h("button", { class: "btn", onclick: () => copyTrello(), title: "Uma imagem só, com o que está na tela (com zoom: a parte ampliada) e o comentário escrito embaixo (T)" },
+        rvIcon("copy"), "Copiar para o Trello"),
       h("button", { class: "btn", onclick: () => copyText(), text: "Copiar só o comentário" }),
       M.has_video ? clipBtn : null,
       generalBox(),
@@ -878,7 +880,7 @@ async function screenRevisao(root, arg) {
     vw.classList.toggle("picking", RV.mode === "pick");
     hint.textContent = RV.mode === "graphs" ? "Os gráficos acompanham o frame: com ← → eles se atualizam. G ou Esc fecha." :
       RV.mode === "pick" ? "Mova o mouse sobre o vídeo. Clique para fixar o ponto (até 4) · arraste para mover com zoom · P ou Esc sai." :
-      "↑ ↓ de corte em corte · Shift + ← → anda 1 frame · roda do mouse ou pinça: zoom · Z: caber / 100% · N próxima aula";
+      "↑ ↓ de corte em corte · Shift + ← → anda 1 frame · roda do mouse ou pinça: zoom · Z: caber / 100% · T copiar para o Trello · N próxima aula";
     requestAnimationFrame(layoutViewer);
   }
   function setMode(m) {
@@ -1076,6 +1078,77 @@ async function screenRevisao(root, arg) {
     const c = commentAt(cur.frame);
     const txt = cmtEl && cmtFrame === cur.frame ? cmtEl.value.trim() : (c ? c.text : "");
     return `Vídeo ${nn} · ${tcOf(cur.frame)}` + (txt ? ` · ${txt}` : "");
+  }
+  // ---- Trello (pedido do JP, 22/10): o Trello só aceita UMA coisa colada; e-mail e WhatsApp aceitam o pacote
+  // imagem + texto. Então: uma imagem só, com o que está NA TELA (com zoom: só a parte ampliada, em
+  // resolução cheia, e um mini-mapa no canto) e uma faixa embaixo com "Vídeo 01 · 00:00:44 · comentário".
+  // Ideia da ferramenta "conferevideo" (colagem com o texto escrito na imagem).
+  async function trelloPng(f) {
+    const r = await fetch(frameUrl(f, "full"));
+    if (!r.ok) throw new Error("frame");
+    const bmp = await createImageBitmap(await r.blob());
+    const fx = bmp.width / W, fy = bmp.height / H;          // a imagem pode ser a miniatura (vídeo fora daqui)
+    const z = RV.zoom;
+    let cx = 0, cy = 0, cw = W, ch = H;
+    if (!z.fit) {
+      cx = Math.max(0, -z.tx / z.s); cy = Math.max(0, -z.ty / z.s);
+      cw = Math.min(W - cx, vw.clientWidth / z.s); ch = Math.min(H - cy, vw.clientHeight / z.s);
+    }
+    // largura da imagem final: o recorte em pixels do vídeo, entre 960 e 1600 (legível no Trello, arquivo leve)
+    const ow = Math.round(Math.min(1600, Math.max(960, cw))), oh = Math.round((ow * ch) / cw);
+    const pad = 24, fs = Math.round(ow / 48), lh = Math.round(fs * 1.4);
+    const head = `Vídeo ${nn} · ${tcOf(f)}`;
+    const c0 = commentAt(f);
+    const txt = (cmtEl && cmtFrame === f ? cmtEl.value : (c0 ? c0.text : "")).trim();
+    const c = document.createElement("canvas");
+    const g = c.getContext("2d");
+    try { await document.fonts.load(`600 ${fs}px "IBM Plex Sans"`); await document.fonts.load(`${fs}px "IBM Plex Sans"`); } catch (e) { /* fonte do sistema */ }
+    const font = (w) => `${w} ${fs}px "IBM Plex Sans", -apple-system, "Segoe UI", sans-serif`;
+    // quebra o comentário em linhas (respeita as linhas em branco que o JP digitar)
+    g.font = font(400);
+    const lines = [];
+    for (const para of txt ? txt.split(/\n/) : []) {
+      let line = "";
+      for (const word of para.split(/\s+/).filter(Boolean)) {
+        const test = line ? line + " " + word : word;
+        if (g.measureText(test).width > ow - 2 * pad && line) { lines.push(line); line = word; } else line = test;
+      }
+      lines.push(line);
+    }
+    const band = pad + lh + lines.length * lh + Math.round(pad * 0.7);
+    c.width = ow; c.height = oh + band;
+    g.fillStyle = "#161616"; g.fillRect(0, 0, c.width, c.height);
+    g.imageSmoothingQuality = "high";
+    g.drawImage(bmp, cx * fx, cy * fy, cw * fx, ch * fy, 0, 0, ow, oh);
+    if (!z.fit) {
+      // mini-mapa: o frame inteiro pequeno no canto, com o retângulo da parte ampliada
+      const mw = Math.round(ow * 0.2), mh = Math.round((mw * H) / W), mx = ow - mw - 14, my = 14;
+      g.fillStyle = "rgba(0,0,0,.55)"; g.fillRect(mx - 3, my - 3, mw + 6, mh + 6);
+      g.drawImage(bmp, 0, 0, bmp.width, bmp.height, mx, my, mw, mh);
+      g.strokeStyle = "#7aa9ff"; g.lineWidth = 2;
+      g.strokeRect(mx + (cx / W) * mw, my + (cy / H) * mh, Math.max(3, (cw / W) * mw), Math.max(3, (ch / H) * mh));
+    }
+    g.fillStyle = "#2a2a2a"; g.fillRect(0, oh, ow, 1);
+    g.textBaseline = "top";
+    g.font = font(600); g.fillStyle = "#7aa9ff";
+    g.fillText(head, pad, oh + pad);
+    g.font = font(400); g.fillStyle = "#ececec";
+    lines.forEach((ln, i) => g.fillText(ln, pad, oh + pad + lh + i * lh));
+    return await new Promise((ok, bad) => c.toBlob((b) => (b ? ok(b) : bad(new Error("png"))), "image/png"));
+  }
+  async function copyTrello() {
+    flushComment();
+    if (!window.ClipboardItem || !navigator.clipboard || !navigator.clipboard.write) {
+      toast("Este navegador não deixa copiar imagem. Use o Chrome, o Edge ou o Safari.", true); return;
+    }
+    try {
+      // a promessa vai dentro do ClipboardItem (o Safari exige)
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": trelloPng(cur.frame) })]);
+      toast(RV.zoom.fit ? "Imagem para o Trello copiada (frame + comentário). Cole no cartão com ⌘V / Ctrl+V."
+        : "Imagem para o Trello copiada: a parte ampliada + comentário. Cole no cartão com ⌘V / Ctrl+V.");
+    } catch (e) {
+      toast("Não foi possível copiar a imagem para o Trello.", true);
+    }
   }
   async function copyText() {
     const t = clipText();
@@ -1315,7 +1388,7 @@ async function screenRevisao(root, arg) {
       ArrowRight: () => (e.shiftKey ? goFrame(cur.frame + 1) : go(1)),
       ArrowLeft: () => (e.shiftKey ? goFrame(cur.frame - 1) : go(-1)),
       ArrowDown: () => goCut(1), ArrowUp: () => goCut(-1),
-      n: () => nextLesson(),
+      n: () => nextLesson(), t: () => copyTrello(),
       c: () => focusComment(), v: () => toggleClip(), g: () => setMode(RV.mode === "graphs" ? null : "graphs"),
       p: () => setMode(RV.mode === "pick" ? null : "pick"), f: () => fullscreen(),
       "+": () => zoomAt(vw.clientWidth / 2, vw.clientHeight / 2, 1.25), "=": () => zoomAt(vw.clientWidth / 2, vw.clientHeight / 2, 1.25),

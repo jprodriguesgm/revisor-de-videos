@@ -238,7 +238,11 @@ O comentário salva sozinho. Um comentário por frame; apagar o texto apaga o co
 ![Aviso de ortografia e comentário](docs/guia/09-revisao-aviso-e-comentario.png)
 
 - **Copiar frame + comentário** (ou **⌘C** no Mac / **Ctrl+C** no Windows): copia a imagem do
-  frame e o texto "Vídeo 01 · 00:01:15 · comentário". Cole no e-mail, no WhatsApp ou no Trello.
+  frame e o texto "Vídeo 01 · 00:01:15 · comentário". Cole no e-mail ou no WhatsApp.
+- **Copiar para o Trello** (ou **T**): o Trello só aceita uma coisa colada, então este botão copia
+  **uma imagem só** com o que está na tela e o comentário escrito numa faixa embaixo. Com zoom, vai
+  só a parte ampliada (nítida, do vídeo original) e um mini-mapa no canto mostrando de onde ela é.
+  Cole no cartão do Trello com ⌘V / Ctrl+V.
 - **Copiar só o comentário:** só o texto.
 
 ### Comentário geral do vídeo (sem tempo)
@@ -380,6 +384,7 @@ Na tela de revisão:
 | P | conta-gotas |
 | F | tela cheia |
 | ⌘C (Mac) / Ctrl+C (Windows) | copiar frame + comentário |
+| T | copiar para o Trello (imagem do que está na tela + comentário escrito) |
 | + − | zoom |
 | Z | caber na tela / 100% |
 | Esc | fecha o trecho, os gráficos ou o conta-gotas; sai do campo de texto |

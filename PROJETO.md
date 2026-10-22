@@ -645,7 +645,14 @@ Montagem-11 (21/10): Mac e Windows TUDO OK no diagnóstico; sintéticos no Mac d
    - Testes: tests/test_reanalisar.py.
 2. Vectorscope com quadrados coloridos (R, Mg, B, Cy, G, Yl; SCOPE_TARGET_COLORS em app.js) no resumo
    geral, em G e no conta-gotas (todos usam scopeOverlay).
-3. Trello (imagem + comentário juntos): o JP decidiu deixar PARA DEPOIS. Ideia preferida: botão "Copiar
+3. TRELLO (feito 22/10 à tarde, branch "trello" até sair a 1.0.1): o código da "conferevideo" (HTML
+   mandado pelo JP) copia SÓ image/png: uma colagem com o texto escrito na imagem — por isso cola no Trello
+   (o nosso copiava png+html+texto num item só; o Trello pega uma parte). Botão "Copiar para o Trello"
+   (tecla T) na revisão: revisao.js trelloPng() = o que está NA TELA (com zoom: recorte do frame cheio +
+   mini-mapa no canto com o retângulo; sem zoom: frame inteiro), largura 960–1600 px, faixa embaixo com
+   "Vídeo NN · tempo" (azul) e o comentário (quebra de linha), fonte IBM Plex. Só image/png na área de
+   transferência. "Copiar frame + comentário" (e-mail/WhatsApp) e o Resumo final NÃO mudaram (pedido do JP:
+   gosta de copiar só o texto). Antes: o JP decidiu deixar PARA DEPOIS. Ideia preferida: botão "Copiar
    para o Trello" com o texto escrito numa faixa embaixo do frame (e/ou colagem de vários frames com
    legenda, como a ferramenta "conferevideo" do antigo chefe dele, cujo código o Claude não conseguiu abrir).
 4. VULKAN NO WINDOWS (feito 22/10, pedido do JP: "não gosto de usar só o processador do Windows"):
