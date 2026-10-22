@@ -899,7 +899,11 @@ Limites conhecidos da etapa 2:
   "Etapa 6". Falta o JP testar no Mac (casa e trabalho) e no Windows com as aulas reais.
 - Pedidos do JP de 21/10 (fila de pastas, ↑ ↓ nos cortes, Próxima aula, abas, trecho com duração,
   medidor de áudio) — feitos (21/10). Ver "Pedidos do JP depois do uso no dia a dia".
-- ONDE PARAMOS (22/10/2026): versão oficial = 1.0.0 (Mac testado pelo JP: "perfeito"). A "Montagem 3
+- ONDE PARAMOS (22/10/2026, tarde): "Montagem 4 (teste)" = correções do Windows da montagem 3 + "Analisar de
+  novo" + vectorscope colorido (ver "Pedidos do JP de 22/10"); Mac e Windows TUDO OK no diagnóstico. Esperando
+  o teste do JP; se aprovar, versão oficial 1.0.1 no mesmo commit. Trello (imagem + texto juntos) e Vulkan:
+  explicados ao JP, esperando a decisão dele.
+- (antes) versão oficial = 1.0.0 (Mac testado pelo JP: "perfeito"). A "Montagem 3
   (teste)" corrige os 2 problemas do Windows (análise travada em 93% e janela de pasta atrás do navegador;
   ver "Correções do Windows") e ESPERA o teste do JP no Windows. Se ele aprovar: Run workflow com
   sistemas=ambos e versao=1.0.1 no commit testado. Se a janela ainda abrir atrás: no Windows, ir direto
