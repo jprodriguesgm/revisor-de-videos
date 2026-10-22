@@ -936,6 +936,13 @@ Limites conhecidos da etapa 2:
 - MAC DO GITHUB (22/10): macos-14 cancelado 4 vezes seguidas ("capacity constraints" das máquinas Mac arm64;
   o job nem começa). Trocado para macos-15 (também M1/arm64; deployment target 11.0 e check_macos_min continuam
   valendo; o cache dos programas usa a mesma chave). Se o macos-15 também faltar, esperar e rodar de novo.
+- ONDE PARAMOS (22/10/2026, 15h30): VERSÃO OFICIAL 1.0.1 publicada (Mac + Windows, mesmo commit bd22430):
+  analisar de novo, vectorscope colorido, Vulkan no Windows, sem PowerShell (antivírus), data do arquivo ×
+  análise. Diagnóstico TUDO OK nos dois; Mac 40/41 (o +7 frames conhecido da imagem congelada). O JP pediu a
+  oficial sem testar a correção da data (testes automáticos cobrem o caso dele). PRÓXIMO: branch "trello"
+  (Copiar para o Trello, tecla T) → juntar com a main, teste Mac+Windows, depois 1.0.2. Pequeno: no Mac o
+  diagnóstico mostra "placa de vídeo (MTL0 (Apple ...))" — limpar o nome. Medir velocidade do Vulkan no
+  Windows do JP.
 - FRAME ANTIGO NA REVISÃO (22/10, 15h, achado pelo JP testando a Montagem 13): o frame parado mostrava a tarja da
   versão com erro e o trecho (V), que toca o arquivo, a corrigida. Causa: análise de antes do "source" (sem o
   tamanho) + a montagem 13 PREENCHIA o tamanho do arquivo novo numa análise velha (trava o erro). Correção:
