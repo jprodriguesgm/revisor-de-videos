@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import analyze, media, report, summary, vinheta
+from . import analyze, media, report, speech, summary, vinheta
 
 # estimativa antes de medir (máquina virtual do Mac: ~3 s/min imagem + ~1 s/min texto + ~9 s/min fala)
 GUESS_S_PER_MIN = {"base": 4.0, "speech": 9.0}
@@ -217,6 +217,8 @@ class AnalysisJob:
             "failed": sum(1 for v in self.videos if v["status"] == "erro"),
             "pct": round(done_d / total_d, 4),
             "eta_s": self.eta_s(),
+            # onde as falas são ouvidas (placa de vídeo ou processador), quando "Ouvir as falas" está ligado
+            "speech_engine": speech.engine_view() if self.settings.transcribe else None,
             "videos": [{k: v[k] for k in ("n", "id", "file", "duration", "status", "error", "detail", "pct", "row")}
                        | {"cached": v["status"] == "wait" and self._cached(v)}
                        for v in self.videos],

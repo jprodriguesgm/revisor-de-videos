@@ -79,6 +79,31 @@ jobs:
             models
           key: deps-${{ matrix.nome }}-${{ hashFiles('packaging/build_deps.py') }}
 
+      # Windows: Vulkan SDK para montar o whisper-cli-vulkan (falas na placa de vídeo, 22/10).
+      # Só quando os programas não estão no cache.
+      - name: Vulkan SDK (Windows)
+        if: steps.deps.outputs.cache-hit != 'true' && matrix.nome == 'windows'
+        shell: pwsh
+        env:
+          VULKAN_VERSION: "1.4.313.2"
+        run: |
+          $inst = "$env:RUNNER_TEMP\vulkansdk.exe"
+          $urls = @("https://sdk.lunarg.com/sdk/download/$env:VULKAN_VERSION/windows/vulkansdk-windows-X64-$env:VULKAN_VERSION.exe",
+                    "https://sdk.lunarg.com/sdk/download/latest/windows/vulkan-sdk.exe")
+          $ok = $false
+          foreach ($u in $urls) {
+            curl.exe -fL --retry 3 -o $inst $u
+            if ($LASTEXITCODE -eq 0) { $ok = $true; Write-Output "baixado: $u"; break }
+          }
+          if (-not $ok) { Write-Output "::error title=Vulkan SDK::não foi possível baixar"; exit 1 }
+          # o instalador é um programa de janela: Start-Process -Wait espera ele terminar
+          $p = Start-Process -FilePath $inst -Wait -PassThru -NoNewWindow -ArgumentList @("--root", "C:\VulkanSDK\sdk", "--accept-licenses", "--default-answer", "--confirm-command", "install")
+          Write-Output "instalador terminou com código $($p.ExitCode)"
+          if (-not (Test-Path C:\VulkanSDK\sdk\Bin\glslc.exe)) { Write-Output "::error title=Vulkan SDK::glslc não instalado"; exit 1 }
+          Add-Content $env:GITHUB_ENV "VULKAN_SDK=C:\VulkanSDK\sdk"
+          Add-Content $env:GITHUB_PATH "C:\VulkanSDK\sdk\Bin"
+          Write-Output "Vulkan SDK ok"
+
       - name: Montar FFmpeg, Tesseract, whisper-cli e baixar o modelo
         if: steps.deps.outputs.cache-hit != 'true'
         run: python packaging/build_deps.py

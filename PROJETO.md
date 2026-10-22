@@ -644,9 +644,30 @@ Montagem-11 (21/10): Mac e Windows TUDO OK no diagnóstico; sintéticos no Mac d
    - Testes: tests/test_reanalisar.py.
 2. Vectorscope com quadrados coloridos (R, Mg, B, Cy, G, Yl; SCOPE_TARGET_COLORS em app.js) no resumo
    geral, em G e no conta-gotas (todos usam scopeOverlay).
-3. Sugestões do antigo chefe do JP (CONVERSAR ANTES, não feitas): copiar imagem + comentário juntos para
-   o Trello (ferramenta dele: "conferevideo"; o Claude não conseguiu abrir o código — sites fora da lista
-   do ambiente) e Vulkan no Windows. Ver a conversa de 22/10.
+3. Trello (imagem + comentário juntos): o JP decidiu deixar PARA DEPOIS. Ideia preferida: botão "Copiar
+   para o Trello" com o texto escrito numa faixa embaixo do frame (e/ou colagem de vários frames com
+   legenda, como a ferramenta "conferevideo" do antigo chefe dele, cujo código o Claude não conseguiu abrir).
+4. VULKAN NO WINDOWS (feito 22/10, pedido do JP: "não gosto de usar só o processador do Windows"):
+   - Leitura do vídeo já usava a placa (-hwaccel auto no Windows, videotoolbox no Mac; media.hwaccel_args).
+     OCR (Tesseract) continua no processador (não há placa de vídeo útil para ele).
+   - Fala: o app do Windows leva DOIS whisper: whisper-cli-vulkan.exe (-DGGML_VULKAN=ON) e whisper-cli.exe
+     (processador, reserva). build_deps.py monta o do Vulkan com o Vulkan SDK (passo "Vulkan SDK (Windows)"
+     no montar.yml, LunarG 1.4.313.2 em C:\VulkanSDK\sdk; só quando o cache dos programas muda).
+   - speech.transcribe_chunk: Vulkan primeiro; se não abrir/falhar → refaz o pedaço no processador e segue no
+     processador até fechar o app (speech._gpu_problem). Sem vulkan-1.dll no System32 → nem tenta. SetErrorMode
+     no Windows: sem janelas de erro do sistema se o programa não abrir/travar.
+   - Escolha da placa: o whisper 1.9.5 pega a 1ª placa do Vulkan, que pode ser a Intel integrada. Lê das
+     mensagens "found GPU device i: VulkanN (type: t, cnt: c)" (1 = dedicada, 2 = integrada); se caiu na
+     integrada, o próximo pedaço tenta -dev 1, 2… e fica na dedicada (speech._gpu). Sem -np agora (as
+     mensagens dizem onde rodou). O nome da placa vem do Windows (Win32_VideoController), só para mostrar.
+   - Cada pedaço guarda backend/gpu/gpu_type; analysis["speech"] também. Tela de Análise: "Falas: na placa
+     de vídeo (NVIDIA …)" ou "Falas: no processador · a placa de vídeo não funcionou" (jobs.snapshot
+     speech_engine = speech.engine_view()). Diagnóstico: linha "Whisper VK" (não é erro sem placa: o
+     GitHub não tem placa de vídeo). REVISOR_WHISPER_GPU=off desliga o Vulkan.
+   - Achado: no whisper-cli 1.9.5 o flash attention vem LIGADO e desliga o -dtw ("dtw_token_timestamps is
+     not supported with flash_attn"). Sempre foi assim (calibragem da fala feita assim). Não mudado.
+   - Testado aqui com o Vulkan por software (lavapipe, GGML_VK_VISIBLE_DEVICES=0) e com programas falsos
+     (tests/test_gpu_fala.py). FALTA: medir no Windows do JP com a Nvidia (tempo por minuto de aula).
 - tools/ui_smoke.py precisa de um REVISOR_HOME com a equipe "Mônica" (configuracoes.json com
   {"editors":[{"name":"Mônica","active":true}]}) e de um Relatorio_tempo_*.txt na pasta das aulas.
 
@@ -899,7 +920,9 @@ Limites conhecidos da etapa 2:
   "Etapa 6". Falta o JP testar no Mac (casa e trabalho) e no Windows com as aulas reais.
 - Pedidos do JP de 21/10 (fila de pastas, ↑ ↓ nos cortes, Próxima aula, abas, trecho com duração,
   medidor de áudio) — feitos (21/10). Ver "Pedidos do JP depois do uso no dia a dia".
-- ONDE PARAMOS (22/10/2026, tarde): "Montagem 4 (teste)" = correções do Windows da montagem 3 + "Analisar de
+- ONDE PARAMOS (22/10/2026, fim): montagem de teste com Vulkan no Windows (ver "Pedidos do JP de 22/10",
+  item 4). Esperando o JP testar no Windows (aparece "Falas: na placa de vídeo (NVIDIA …)"?) e no Mac.
+- (antes, 22/10 tarde): "Montagem 4 (teste)" = correções do Windows da montagem 3 + "Analisar de
   novo" + vectorscope colorido (ver "Pedidos do JP de 22/10"); Mac e Windows TUDO OK no diagnóstico. Esperando
   o teste do JP; se aprovar, versão oficial 1.0.1 no mesmo commit. Trello (imagem + texto juntos) e Vulkan:
   explicados ao JP, esperando a decisão dele.

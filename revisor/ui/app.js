@@ -827,7 +827,10 @@ async function screenAnalise(root) {
         text: `${plural(j.failed, "vídeo", "vídeos")} com erro (fica de fora)` }) : null,
       h("div", { class: "bar big", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": "100",
                  "aria-valuenow": String(Math.round(j.pct * 100)) }, h("i", { style: { width: `${Math.round(j.pct * 100)}%` } })),
-      h("span", { class: "muted", style: { fontSize: "13px" }, text: eta }));
+      h("span", { class: "muted", style: { fontSize: "13px" }, text: eta }),
+      j.speech_engine ? h("span", { class: "engine" + (j.speech_engine.gpu ? " gpu" : ""),
+        title: j.speech_engine.problem ? `A placa de vídeo não funcionou: ${j.speech_engine.problem}` : "",
+        text: `Falas: ${j.speech_engine.gpu ? "na" : "no"} ${j.speech_engine.text}` + (j.speech_engine.problem ? " · a placa de vídeo não funcionou" : "") }) : null);
     const firstReady = j.videos.find((v) => v.status === "ok");
     if (finished) {
       btnMain.textContent = "Ver resumo geral";

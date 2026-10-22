@@ -51,6 +51,9 @@ def diagnostico() -> int:
     print(f"{'tessdata':<12} {'ok' if ocr.available() else 'FALTA'}  ({ocr.tessdata_dir()})")
     cli, model = speech.find_cli(), speech.find_model()
     print(f"{'whisper-cli':<12} {'ok' if cli else 'FALTA'}  ({cli})")
+    gpu_cli = speech.find_gpu_cli()
+    if platform.system() == "Windows":
+        print(f"{'whisper-vk':<12} {'ok' if gpu_cli else 'não usado: ' + (speech.gpu_problem() or 'FALTA')}  ({gpu_cli})")
     print(f"{'modelo':<12} {'ok' if model else 'FALTA'}  ({model})")
     ok = ok and bool(media.h264_encoder()) and ocr.available() and bool(cli and model)
     if ok:
@@ -101,10 +104,22 @@ def _testes_rapidos(media, ocr, speech, cli, model) -> bool:
         t = time.time()
         try:
             res = speech.transcribe_chunk(str(src), 0.0, 2.0, model=model, cli=cli)
-            print(f"{'Whisper':<12} ok ({time.time() - t:.1f} s para 2 s de áudio; {len(res['words'])} palavras)")
+            print(f"{'Whisper':<12} ok ({time.time() - t:.1f} s para 2 s de áudio; {len(res['words'])} palavras; "
+                  f"{speech.where_text(res.get('backend'), res.get('gpu'))})")
         except Exception as e:
             print(f"{'Whisper':<12} ERRO {str(e)[-300:]}")
             ok = False
+        gpu_cli = speech.find_gpu_cli()
+        if gpu_cli:
+            # placa de vídeo (Windows, Vulkan): não é erro se esta máquina não tiver placa (o app usa o processador)
+            t = time.time()
+            try:
+                res = speech.transcribe_chunk(str(src), 0.0, 2.0, model=model, cli=gpu_cli)
+                print(f"{'Whisper VK':<12} ok ({time.time() - t:.1f} s; "
+                      f"{speech.where_text(res.get('backend'), res.get('gpu'))}"
+                      f"{' · ' + res['gpu_type'] if res.get('gpu_type') else ''})")
+            except Exception as e:
+                print(f"{'Whisper VK':<12} não funcionou nesta máquina (o app usa o processador): {str(e)[-200:]}")
     return ok
 
 

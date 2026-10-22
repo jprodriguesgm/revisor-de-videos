@@ -17,6 +17,11 @@ Como roda:
   precisos).
 - Os avisos são refeitos sem transcrever de novo quando a lista de frases muda
   (refresh feito por analyze.refresh_speech_checks).
+- Placa de vídeo: no Mac o whisper-cli usa o Metal (placa do M1). No Windows vão dois:
+  whisper-cli-vulkan (placa de vídeo pelo Vulkan: Nvidia, Intel ou AMD) e whisper-cli
+  (só processador). O app usa o Vulkan primeiro; se ele não abrir ou falhar (driver
+  antigo, máquina sem Vulkan), refaz o pedaço no processador e segue no processador
+  até fechar o app. Cada pedaço guarda onde rodou ("backend", "gpu").
 """
 from __future__ import annotations
 
@@ -109,6 +114,159 @@ def find_cli() -> str | None:
         if name != "main" or "whisper" in p:
             return p
     return None
+
+
+GPU_CLI = "whisper-cli-vulkan"     # Windows: placa de vídeo pelo Vulkan
+_gpu_problem: str | None = None    # o Vulkan falhou (ou não achou placa) nesta sessão: só o processador
+# Qual placa o Vulkan usa (-dev N, N = ordem entre as placas). O whisper pega a 1ª da lista do Vulkan, que pode
+# ser a Intel da placa-mãe em vez da Nvidia: se a escolhida for integrada, o próximo pedaço tenta a seguinte
+# (no máximo 3) e fica com a dedicada quando achar.
+_gpu = {"dev": 0, "seen": {}, "done": False}
+GPU_TYPE = {1: "dedicada", 2: "integrada"}
+
+
+def find_gpu_cli() -> str | None:
+    """whisper-cli com Vulkan (só existe no app do Windows). REVISOR_WHISPER_GPU=off desliga."""
+    global _gpu_problem
+    if os.environ.get("REVISOR_WHISPER_GPU", "auto").lower() in ("off", "0", "nao", "não"):
+        return None
+    try:
+        p = media.find_tool(GPU_CLI)
+    except media.MediaError:
+        return None
+    if os.name == "nt":
+        _quiet_windows_errors()
+        # o Vulkan vem com o driver da placa de vídeo; sem ele o programa nem abre
+        if not (Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "vulkan-1.dll").is_file():
+            _gpu_problem = _gpu_problem or "este Windows não tem o Vulkan (driver da placa de vídeo)"
+            return None
+    return p
+
+
+_quiet_done = False
+
+
+def _quiet_windows_errors() -> None:
+    """Windows: se o whisper do Vulkan não abrir ou travar, NÃO mostrar janela de erro do sistema
+    (o app só passa para o processador). Os programas abertos pelo app herdam esse modo."""
+    global _quiet_done
+    if _quiet_done:
+        return
+    _quiet_done = True
+    try:
+        import ctypes
+        k = ctypes.windll.kernel32
+        k.SetErrorMode(k.GetErrorMode() | 0x0001 | 0x0002 | 0x8000)   # FAILCRITICAL | NOGPFAULT | NOOPENFILE
+    except Exception:
+        pass
+
+
+def gpu_problem() -> str | None:
+    return _gpu_problem
+
+
+def whisper_clis() -> list[str]:
+    """Ordem de tentativa: placa de vídeo (Vulkan) e depois o processador."""
+    out = []
+    gpu = find_gpu_cli()
+    if gpu and _gpu_problem is None:
+        out.append(gpu)
+    cpu = find_cli()
+    if cpu:
+        out.append(cpu)
+    return out
+
+
+def backend_of(log: str, dev: int = 0) -> dict:
+    """Onde o whisper rodou, lido das mensagens dele (whisper.cpp 1.9):
+    "whisper_backend_init_gpu: found GPU device 0: Vulkan0 (type: 1, cnt: 0)" (1 = dedicada, 2 = integrada),
+    "whisper_backend_init_gpu: using Vulkan0 backend" / "whisper_backend_init_gpu: no GPU found";
+    Mac: "using MTL0 backend" e "GPU name:   Apple M1 Max"."""
+    m = re.search(r"init_gpu: using (\S+) backend", log)
+    dev_name = m.group(1) if m else ""
+    up = dev_name.upper()
+    kind = "Vulkan" if up.startswith("VULKAN") else "Metal" if up.startswith(("METAL", "MTL")) else \
+        "CUDA" if up.startswith("CUDA") else "CPU"
+    gtype = None
+    for f in re.finditer(r"found GPU device \d+: (\S+) \(type: (\d+), cnt: (\d+)\)", log):
+        if int(f.group(3)) == dev:
+            gtype = int(f.group(2))
+    name = None
+    g = re.search(r"GPU name:\s+([^\n]+)", log)
+    if kind == "Metal" and g:
+        name = g.group(1).strip()
+    return {"backend": kind, "gpu": name, "gpu_type": gtype, "no_gpu": "init_gpu: no GPU found" in log}
+
+
+last_where: dict | None = None     # onde rodou o último pedaço (para a tela de análise)
+
+
+def engine_view() -> dict | None:
+    """Para a tela: onde as falas estão sendo ouvidas nesta sessão."""
+    if last_where is None:
+        return None
+    return {"text": where_text(last_where.get("backend"), last_where.get("gpu")),
+            "gpu": last_where.get("backend") not in (None, "CPU"),
+            "problem": _gpu_problem}
+
+
+_win_gpus: list[str] | None = None
+
+
+def windows_gpu_names() -> list[str]:
+    """Nomes das placas de vídeo do Windows (só para mostrar na tela; o Vulkan não diz o nome)."""
+    global _win_gpus
+    if _win_gpus is None:
+        _win_gpus = []
+        if os.name == "nt":
+            try:
+                r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                                    "(Get-CimInstance Win32_VideoController).Name"],
+                                   capture_output=True, text=True, errors="replace", timeout=10,
+                                   **media._hidden_window_kwargs())
+                _win_gpus = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return _win_gpus
+
+
+def _guess_name(gtype: int | None) -> str | None:
+    names = [n for n in windows_gpu_names() if "basic" not in n.lower() and "remote" not in n.lower()]
+    integ = [n for n in names if re.search(r"intel|uhd|iris|radeon\(tm\) graphics|radeon graphics", n, re.I)]
+    dedic = [n for n in names if n not in integ]
+    pick = dedic if gtype == 1 else integ if gtype == 2 else names
+    return pick[0] if pick else None
+
+
+def where_text(backend: str | None, gpu: str | None) -> str:
+    """Texto para a tela: "placa de vídeo (NVIDIA GeForce RTX 3060)" ou "processador"."""
+    if backend and backend != "CPU":
+        return f"placa de vídeo ({gpu})" if gpu else f"placa de vídeo ({backend})"
+    return "processador"
+
+
+def _note_gpu(where: dict) -> None:
+    """Depois de um pedaço no Vulkan: guarda a placa usada e decide a do próximo pedaço."""
+    global _gpu_problem
+    d = _gpu["dev"]
+    if where["no_gpu"]:
+        if d == 0:
+            _gpu_problem = "o Vulkan não achou placa de vídeo"
+            return
+        # não há placa nesse número: volta para a melhor que já viu
+        best = min(_gpu["seen"], key=lambda k: (_gpu["seen"][k] != 1, k)) if _gpu["seen"] else 0
+        _gpu.update(dev=best, done=True)
+        return
+    if where["gpu_type"] is not None:
+        _gpu["seen"][d] = where["gpu_type"]
+    if _gpu["done"]:
+        return
+    if where["gpu_type"] == 1:
+        _gpu["done"] = True
+    elif d < 3:
+        _gpu["dev"] = d + 1          # integrada: no próximo pedaço tenta a placa seguinte
+    else:
+        _gpu.update(dev=0, done=True)
 
 
 def available() -> bool:
@@ -228,31 +386,77 @@ def _extract_wav(video_path: str, start: float, end: float, dst: str) -> None:
         raise SpeechError(r.stderr.decode(errors="ignore")[-400:])
 
 
+def _run_whisper(cli: str, model: str, wav: str, out: str, n_threads: int | None,
+                 dev: int = 0) -> tuple[dict, dict]:
+    cmd = [cli, "-m", model, "-f", wav, "-l", "pt", "-t", str(n_threads or threads()),
+           "-mc", "0",            # não usa o texto anterior: evita "loop" e não alisa repetições
+           "-bs", "1", "-bo", "1",  # guloso: 2–3× mais rápido; a diferença no texto é pequena
+           "-sns",
+           "--prompt", PROMPT,
+           "-ojf", "-of", out]
+    # (sem -np: as mensagens dizem se rodou na placa de vídeo ou no processador)
+    if "small" in Path(model).name:
+        cmd[cmd.index("-ojf"):cmd.index("-ojf")] = ["-dtw", "small"]
+    if dev:
+        cmd[1:1] = ["-dev", str(dev)]
+    try:
+        os.remove(out + ".json")
+    except OSError:
+        pass
+    try:
+        r = subprocess.run(cmd, capture_output=True, **media._hidden_window_kwargs())
+    except OSError as e:          # programa que nem abre (Windows sem a DLL do Vulkan, por exemplo)
+        raise SpeechError(f"{Path(cli).name} não abriu: {e}")
+    log = (r.stderr or b"").decode(errors="ignore")
+    if r.returncode != 0 or not os.path.exists(out + ".json"):
+        raise SpeechError(f"{Path(cli).name} (código {r.returncode}): {log[-600:]}")
+    raw = json.loads(Path(out + ".json").read_text(encoding="utf-8", errors="replace"))
+    return raw, backend_of(log, dev)
+
+
 def transcribe_chunk(video_path: str, start: float, end: float, model: str | None = None,
                      cli: str | None = None, n_threads: int | None = None) -> dict:
+    """Transcreve um pedaço. Sem `cli`: placa de vídeo primeiro (Windows: Vulkan), processador se falhar."""
+    global _gpu_problem
     model = model or find_model()
-    cli = cli or find_cli()
-    if not model or not cli:
+    clis = [cli] if cli else whisper_clis()
+    if not model or not clis:
         raise SpeechError("whisper não encontrado")
+    gpu = find_gpu_cli()
     with tempfile.TemporaryDirectory(prefix="revisor_fala_") as tmp:
         wav = os.path.join(tmp, "a.wav")
         _extract_wav(video_path, start, end, wav)
         out = os.path.join(tmp, "out")
-        cmd = [cli, "-m", model, "-f", wav, "-l", "pt", "-t", str(n_threads or threads()),
-               "-mc", "0",            # não usa o texto anterior: evita "loop" e não alisa repetições
-               "-bs", "1", "-bo", "1",  # guloso: 2–3× mais rápido; a diferença no texto é pequena
-               "-sns",
-               "--prompt", PROMPT,
-               "-ojf", "-of", out, "-np"]
-        if "small" in Path(model).name:
-            cmd[cmd.index("-ojf"):cmd.index("-ojf")] = ["-dtw", "small"]
         t = time.time()
-        r = subprocess.run(cmd, capture_output=True, **media._hidden_window_kwargs())
-        if r.returncode != 0 or not os.path.exists(out + ".json"):
-            raise SpeechError((r.stderr or b"").decode(errors="ignore")[-600:])
-        raw = json.loads(Path(out + ".json").read_text(encoding="utf-8", errors="replace"))
+        k = 0
+        while True:
+            c = clis[k]
+            on_gpu = bool(gpu) and c == gpu
+            dev = _gpu["dev"] if on_gpu else 0
+            try:
+                raw, where = _run_whisper(c, model, wav, out, n_threads, dev)
+            except SpeechError as e:
+                if on_gpu and dev:               # placa seguinte não serviu: volta para a primeira
+                    _gpu.update(dev=0, done=True)
+                    t = time.time()
+                    continue
+                if on_gpu and k + 1 < len(clis):
+                    _gpu_problem = str(e)[-300:]     # segue no processador até fechar o app
+                    print(f"[fala] Vulkan falhou, usando o processador: {_gpu_problem}", flush=True)
+                    k += 1
+                    t = time.time()
+                    continue
+                raise
+            if on_gpu:
+                _note_gpu(where)
+                if where["backend"] == "Vulkan":
+                    where["gpu"] = _guess_name(where["gpu_type"])
+            break
+    global last_where
+    last_where = {"backend": where["backend"], "gpu": where["gpu"]}
     words = words_from_whisper_json(raw, offset=start)
     return {"start": round(start, 3), "end": round(end, 3), "seconds": round(time.time() - t, 2),
+            "backend": where["backend"], "gpu": where["gpu"], "gpu_type": GPU_TYPE.get(where["gpu_type"]),
             "words": [w.to_list() for w in words],
             "segments": [[round(start + s["offsets"]["from"] / 1000, 2), round(start + s["offsets"]["to"] / 1000, 2),
                           s.get("text", "").strip()] for s in raw.get("transcription", [])]}
@@ -297,8 +501,11 @@ def transcribe(video_path: str, content: tuple[float, float], cache_dir: str | P
             progress((k + 1) / len(chunks))
     words = [w for c in done for w in c["words"]]
     segs = [s for c in done for s in c["segments"]]
+    # onde rodou: o último pedaço feito agora (ou guardado) que diz
+    where = next(({"backend": c["backend"], "gpu": c.get("gpu"), "gpu_type": c.get("gpu_type")}
+                  for c in reversed(done) if c.get("backend")), {"backend": None, "gpu": None, "gpu_type": None})
     return {"status": status, "model": MODEL_NAME, "chunks": len(chunks), "chunks_done": len(done),
-            "seconds": round(sum(c["seconds"] for c in done), 1), "words": words, "segments": segs}
+            "seconds": round(sum(c["seconds"] for c in done), 1), "words": words, "segments": segs, **where}
 
 
 # ------------------------------------------------------------------ avisos

@@ -11,7 +11,9 @@ Como cada um é feito:
 - Tesseract: montado do código-fonte com a Leptonica SEM bibliotecas de imagem (o app
   manda as imagens em PGM). Fica um executável só, sem dependências.
 - whisper-cli: montado do código-fonte (Mac com Metal = placa de vídeo do M1; Windows com
-  AVX2 no processador). Um executável só.
+  AVX2 no processador). Um executável só. No Windows vai também o whisper-cli-vulkan (placa
+  de vídeo pelo Vulkan: Nvidia, Intel, AMD), que o app usa primeiro; precisa do Vulkan SDK na
+  montagem (variável VULKAN_SDK; o GitHub Actions instala) e do driver da placa no computador.
 - FFmpeg: no Mac, montado do código-fonte com libx264 (estática) e VideoToolbox, sem
   bibliotecas de fora do sistema. No Windows, a versão pronta do BtbN (GPL, com libx264).
   No Linux (só testes), copia o FFmpeg do sistema.
@@ -143,6 +145,16 @@ def build_whisper():
         args += ["-DGGML_METAL=ON", "-DGGML_METAL_EMBED_LIBRARY=ON", "-DGGML_BLAS=ON"]
     cmake_build(src, WORK / "whisper-build", args, target="whisper-cli")
     put(find_file(WORK / "whisper-build", "whisper-cli" + EXE), "whisper-cli" + EXE)
+    if IS_WIN:
+        # placa de vídeo pelo Vulkan (pedido do JP, 22/10): um segundo executável; o de processador fica
+        # como reserva para máquina sem Vulkan
+        if not os.environ.get("VULKAN_SDK"):
+            if os.environ.get("REVISOR_SEM_VULKAN") == "1":
+                print("(sem Vulkan SDK: whisper-cli-vulkan não montado)")
+                return
+            raise SystemExit("Vulkan SDK não encontrado (VULKAN_SDK). Instale o SDK ou use REVISOR_SEM_VULKAN=1.")
+        cmake_build(src, WORK / "whisper-build-vulkan", args + ["-DGGML_VULKAN=ON"], target="whisper-cli")
+        put(find_file(WORK / "whisper-build-vulkan", "whisper-cli" + EXE), "whisper-cli-vulkan" + EXE)
 
 
 # ---------------------------------------------------------------- FFmpeg
@@ -283,6 +295,19 @@ def check():
                 raise SystemExit(f"{name} depende de bibliotecas de fora: {bad}")
         elif not IS_WIN and name in ("tesseract", "whisper-cli"):
             print(subprocess.run(["ldd", str(p)], capture_output=True, text=True).stdout)
+    if IS_WIN:
+        p = BIN / "whisper-cli-vulkan.exe"
+        if not p.is_file():
+            raise SystemExit("FALTA: whisper-cli-vulkan.exe")
+        # a máquina do GitHub não tem placa de vídeo; só confere que o programa existe e abre
+        dll = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "vulkan-1.dll"
+        if dll.is_file():
+            import ctypes
+            ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)   # sem janelas de erro do sistema
+            r = subprocess.run([str(p), "-h"], capture_output=True, text=True, errors="replace", timeout=60)
+            print(f"whisper-cli-vulkan: {p.stat().st_size / 1e6:.1f} MB  [código {r.returncode}]")
+        else:
+            print(f"whisper-cli-vulkan: {p.stat().st_size / 1e6:.1f} MB  (esta máquina não tem vulkan-1.dll)")
     if IS_MAC:
         enc = subprocess.run([str(BIN / "ffmpeg"), "-hide_banner", "-encoders"], capture_output=True, text=True).stdout
         for e in ("libx264", "h264_videotoolbox"):

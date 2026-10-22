@@ -132,6 +132,11 @@ primeiro vídeo fica pronto, clique em **Revisar o vídeo 01 enquanto analisa**.
 
 ![Análise em andamento](docs/guia/04-analise.png)
 
+- Com **Ouvir as falas** ligado, o cartão de progresso mostra onde as falas estão sendo ouvidas:
+  **na placa de vídeo** (Mac: placa do M1; Windows: Nvidia/Intel/AMD pelo Vulkan) ou **no processador**.
+  No Windows o app tenta a placa de vídeo primeiro; se ela não funcionar (driver antigo, por
+  exemplo), continua no processador sozinho, sem parar a análise. A leitura do vídeo também usa a
+  placa de vídeo quando dá.
 - **Pausar análise** para e continua de onde parou.
 - Um vídeo com problema não para os outros.
 - **Analisar de novo** (botão ↻ no fim da linha de cada vídeo pronto): refaz a análise daquele vídeo
@@ -396,6 +401,8 @@ Para saber qual versão você tem: **Configurações**, no fim do menu da esquer
 - **Nenhum editor para escolher:** cadastre a equipe em **Configurações → Equipe**.
 - **O vídeo voltou corrigido, mas aparecem os frames antigos:** use **Analisar de novo** (↻ na tela
   de análise, ou Ajustes → Analisar de novo na revisão).
+- **Windows: "Falas: no processador · a placa de vídeo não funcionou":** atualize o driver da placa
+  de vídeo (site da Nvidia, Intel ou AMD) e abra o app de novo. A análise funciona igual, só mais devagar.
 - **Algo estranho aconteceu:** o arquivo `revisor.log` mostra o que o app fez. Ele fica em
   - Mac: `~/Library/Application Support/Revisor de Vídeos`
   - Windows: `%APPDATA%\Revisor de Vídeos`
