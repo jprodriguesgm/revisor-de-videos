@@ -60,21 +60,46 @@ REANALYZE_MARK = "REANALISAR"
 def source_of(path: str | Path) -> dict:
     """O que identifica o ARQUIVO analisado (o id só tem nome + duração)."""
     try:
-        return {"size": Path(path).stat().st_size}
+        st = Path(path).stat()
+        return {"size": st.st_size, "mtime": round(st.st_mtime, 1)}
     except OSError:
         return {}
 
 
+def _analyzed_ts(analysis: dict) -> float | None:
+    """Quando a análise foi feita (hora local deste computador, "AAAA-MM-DD HH:MM:SS")."""
+    try:
+        return time.mktime(time.strptime(str(analysis.get("analyzed_at")), "%Y-%m-%d %H:%M:%S"))
+    except (ValueError, OverflowError):
+        return None
+
+
+STALE_MARGIN_S = 120.0     # folga entre a data do arquivo e a hora da análise (cópia, relógio)
+
+
 def is_stale(analysis: dict, path: str | Path | None) -> bool:
-    """A análise guardada é de outro arquivo com o mesmo nome e duração (vídeo corrigido)?
-    Análise antiga sem "source" ou vídeo que não está neste computador: não dá para saber → False."""
-    size = (analysis.get("source") or {}).get("size")
-    if not size or not path:
+    """A análise guardada é de OUTRO arquivo com o mesmo nome e duração (vídeo que voltou corrigido)?
+
+    1. tamanho do arquivo diferente do analisado ("source", gravado desde 22/10);
+    2. o arquivo foi salvo DEPOIS da análise (data de modificação mais nova que "analyzed_at"). Pega também
+       as análises antigas, sem o tamanho — caso real do JP (22/10): o frame parado mostrava a tarja da
+       versão com erro, mas o trecho (V), que toca o vídeo de verdade, mostrava a corrigida.
+    Vídeo que não está neste computador: não dá para saber → False."""
+    if not path:
         return False
     try:
-        return Path(path).stat().st_size != size
+        st = Path(path).stat()
     except OSError:
         return False
+    size = (analysis.get("source") or {}).get("size")
+    if size and st.st_size != size:
+        return True
+    done = _analyzed_ts(analysis)
+    now = time.time()
+    # data do arquivo no futuro (relógio de outro computador): não usar, senão refaria a cada abertura
+    if done is not None and st.st_mtime <= now + 60 and st.st_mtime > done + STALE_MARGIN_S:
+        return True
+    return False
 
 
 def marked(cache_root: str | Path, vid: str) -> bool:
@@ -156,8 +181,7 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
             if is_stale(cached, path):
                 redo = True          # voltou corrigido com o mesmo nome e duração: refaz tudo
             elif cached.get("analysis_version") == ANALYSIS_VERSION:
-                if not cached.get("source"):
-                    cached["source"] = source_of(path)
+                # (o tamanho NÃO é preenchido aqui: a análise pode ser de outra versão do arquivo)
                 if cached.get("speech_version") != SPEECH_VERSION or \
                         (settings.transcribe and (cached.get("speech") or {}).get("status") != "ok"):
                     update_audio_speech(cached, path, out_dir, settings, progress)

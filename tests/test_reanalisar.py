@@ -4,6 +4,7 @@ tinha o mesmo id e abria a análise antiga do cache. Agora:
 - o botão "Analisar de novo" refaz um vídeo (ou a pasta) do zero;
 - nada disso mexe no editor, nos comentários, na entrega nem nas horas do mês."""
 import json
+import os
 import subprocess
 import time
 
@@ -35,13 +36,22 @@ def test_stale_helpers(tmp_path):
     f = tmp_path / "a.mp4"
     f.write_bytes(b"x" * 100)
     a = {"source": analyze.source_of(f)}
-    assert a["source"] == {"size": 100}
+    assert a["source"]["size"] == 100
     assert not analyze.is_stale(a, f)
     f.write_bytes(b"y" * 120)                    # mesmo nome, outro arquivo
     assert analyze.is_stale(a, f)
     assert not analyze.is_stale({}, f)          # análise antiga sem "source": não dá para saber
     assert not analyze.is_stale(a, None)        # vídeo não está neste computador
     assert not analyze.mark_reanalyze(tmp_path / "cache", "abc")   # sem cache: nada a marcar
+    # análise antiga, sem o tamanho (caso real do JP, 22/10): vale a data do arquivo × hora da análise
+    old = {"analyzed_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3600))}
+    os.utime(f, (time.time() - 7200, time.time() - 7200))
+    assert not analyze.is_stale(old, f)          # arquivo de antes da análise: vale
+    os.utime(f, None)                            # arquivo salvo agora, depois da análise: é outro
+    assert analyze.is_stale(old, f)
+    os.utime(f, (time.time() + 86400, time.time() + 86400))
+    assert not analyze.is_stale(old, f)          # data no futuro (relógio errado): não usa
+    assert not analyze.is_stale({"analyzed_at": "?"}, tmp_path / "nao_existe.mp4")
     (tmp_path / "cache" / "abc").mkdir(parents=True)
     assert analyze.mark_reanalyze(tmp_path / "cache", "abc")
     assert analyze.marked(tmp_path / "cache", "abc")
@@ -101,6 +111,28 @@ def test_reanalisar_botao_e_arquivo_trocado(srv):  # noqa: F811
     assert _analysis(tmp, v_b["video"]["id"])["analyzed_at"] == a2b["analyzed_at"]
     st, m3 = _req(port, "GET", "/api/month?m=2026-10")
     assert _horas(m3) == _horas(m1)                               # trocado com o mesmo id: conta uma vez
+
+    # 2b) análise antiga (sem o tamanho, de antes de 22/10) e o vídeo salvo depois dela: refaz sozinho
+    jp = tmp / "home" / "cache" / vid / "analysis.json"
+    old = json.loads(jp.read_text(encoding="utf-8"))
+    old.pop("source", None)
+    old["analyzed_at"] = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 3600))
+    jp.write_text(json.dumps(old), encoding="utf-8")
+    os.utime(pasta / "01 Aula.mp4", None)
+    margem = analyze.STALE_MARGIN_S
+    analyze.STALE_MARGIN_S = 0          # no teste tudo acontece em segundos (na vida real são minutos/dias)
+    try:
+        st, v_old = _req(port, "GET", "/api/video?n=1")
+        assert not v_old["ready"] and v_old["stale"]      # a tela oferece "Analisar este vídeo de novo"
+        st, r = _start(port, pasta, "Ana")
+        assert st == 200, r
+        _wait_all_done(port)
+    finally:
+        analyze.STALE_MARGIN_S = margem
+    a4 = _analysis(tmp, vid)
+    assert a4["source"]["size"] == (pasta / "01 Aula.mp4").stat().st_size and a4["analyzed_at"] != old["analyzed_at"]
+    st, v_new = _req(port, "GET", "/api/video?n=1")
+    assert v_new["ready"]
 
     # 3) pasta toda
     st, res = _req(port, "POST", "/api/reanalyze", {"id": "all"})
