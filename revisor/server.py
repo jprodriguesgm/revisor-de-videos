@@ -107,15 +107,41 @@ class App:
             mt = p.stat().st_mtime
         except OSError:
             return None
+        if analyze.marked(self.cache_root(), vid):        # "Analisar de novo" pedido: a análise velha não vale
+            return None
         hit = self._acache.get(vid)
         if hit and hit[0] == mt:
-            return hit[1]
-        try:
-            a = json.loads(p.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
+            a = hit[1]
+        else:
+            try:
+                a = json.loads(p.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                return None
+            self._acache[vid] = (mt, a)
+        # vídeo que voltou corrigido com o mesmo nome e duração (outro arquivo): os frames do cache são da
+        # versão com erro. Fica "analisando" até a análise nova (que a fila faz sozinha).
+        if analyze.is_stale(a, self._local_file(vid)):
             return None
-        self._acache[vid] = (mt, a)
         return a
+
+    def _local_file(self, vid: str) -> str | None:
+        """Arquivo do vídeo neste computador, sem olhar o cache (para conferir se a análise é dele)."""
+        for x in (self.scan or {}).get("videos", []):
+            if x.get("id") == vid:
+                return x.get("path")
+        rev = self.review
+        if rev and rev.get("folder"):
+            for v in rev.get("videos", []):
+                if v["id"] == vid:
+                    p = Path(rev["folder"]) / v["file"]
+                    return str(p) if p.is_file() else None
+        return None
+
+    @staticmethod
+    def analysis_stamp(a: dict | None) -> str:
+        """Muda quando o vídeo é analisado de novo: vai nos endereços das imagens para o navegador não
+        mostrar a imagem guardada da versão anterior."""
+        return "".join(ch for ch in str((a or {}).get("analyzed_at") or "") if ch.isdigit())
 
     def write_analysis(self, a: dict) -> None:
         """Grava no cache uma análise mudada pela revisão (listas reagrupadas, lista própria)."""
@@ -295,7 +321,7 @@ class App:
             # já analisada nesta sessão: se a pasta mudou (vídeo corrigido, "rodada 2"), analisa de novo
             folder = Path(rev.get("folder") or e["folder"])
             sc = jobs.scan_folder(folder) if folder.is_dir() else None
-            ids = lambda x: {v["id"] for v in x["videos"] if v.get("id")}
+            ids = lambda x: {(v["id"], v.get("size")) for v in x["videos"] if v.get("id")}
             if sc and sc["ok"] and ids(sc) != ids(e["scan"]):
                 with self.lock:
                     self.queue.remove(e)
@@ -657,6 +683,7 @@ class App:
                      "speech": (a.get("speech") or {}).get("status"),
                      "text": (a.get("text") or {}).get("status"),
                      "timings": a.get("timings")},          # tempo de cada etapa da análise (diagnóstico)
+            "ver": self.analysis_stamp(a),
             "items": it["items"], "cuts": it["cuts"], "counts": it["counts"],
             "slides": summary.slide_spans(a),          # trechos com slide em tela cheia (marca na linha do tempo)
             "audio": None if not au else {
@@ -776,6 +803,44 @@ class App:
             self.save_review()
             appdata.save_settings({k: rev[k] for k in ("sensitivity", "group_gap_s")})
         return {"ok": True}
+
+    def reanalyze(self, body: dict) -> dict:
+        """"Analisar de novo" (pedido do JP, 22/10): refaz a análise de um vídeo (ou da pasta toda) do zero,
+        sem usar o cache. NÃO muda a revisão: o id do vídeo é o mesmo, então editor, comentários, rodada,
+        entrega e as horas do mês continuam iguais (o vídeo conta uma vez só)."""
+        rev = self._need_review()
+        target = str(body.get("id") or "")
+        if target != "all" and not target.isalnum():
+            raise ApiError("Vídeo inválido.")
+        folder = Path(rev.get("folder") or "")
+        sc = jobs.scan_folder(folder) if rev.get("folder") and folder.is_dir() else None
+        if not sc or not sc["ok"]:
+            raise ApiError("A pasta dos vídeos não está neste computador: não dá para analisar de novo.")
+        here = {v["id"] for v in sc["videos"] if v.get("id")}
+        if target == "all":
+            ids = [v["id"] for v in rev["videos"] if v["id"] in here]
+        else:
+            self.video_entry(target)
+            if target not in here:
+                raise ApiError("Este vídeo não está mais na pasta (foi trocado ou apagado).")
+            ids = [target]
+        for vid in ids:
+            analyze.mark_reanalyze(self.cache_root(), vid)
+            self.frames.forget(vid)
+            self._acache.pop(vid, None)
+        review.merge_videos(rev, [{"id": v["id"], "file": v["file"], "duration": v["duration"]}
+                                  for v in sc["videos"] if v["id"]])
+        for v in rev["videos"]:
+            v["report_entry"] = sc["matches"].get(v["file"], v.get("report_entry"))
+        busy = self._running_entry()
+        other = busy is not None and busy["key"] != qkey(rev["project"])
+        with self.lock:
+            self.scan = sc
+            self.save_review()
+            # a pasta aberta passa na frente das que esperam; se outra pasta está analisando, é a próxima
+            self._enqueue(rev, sc, front=True)
+        self._pump()
+        return {"ok": True, "videos": len(ids), "queued": other, "running": busy["project"] if other else None}
 
     def _frame_ctx(self, q: dict):
         vid = q.get("id", "")
@@ -934,6 +999,11 @@ class App:
             return {"review": None}
         s = self.settings
         rows = export.comment_rows(rev, s.get("time_format", "seconds"))
+        stamps: dict[str, str] = {}
+        for r in rows:          # versão da análise no endereço da imagem (vídeo analisado de novo = imagem nova)
+            if r["vid"] not in stamps:
+                stamps[r["vid"]] = self.analysis_stamp(self.load_analysis(r["vid"]))
+            r["ver"] = stamps[r["vid"]]
         folder = Path(rev.get("folder") or "")
         jobs_ = export.srt_jobs(rev)
         return {
@@ -1708,6 +1778,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(APP.accept_word(body))
         if ep == "review/adjust":
             return self._json(APP.adjust(body))
+        if ep == "reanalyze":
+            return self._json(APP.reanalyze(body))
         if ep == "pick":
             return self._json(APP.pick(body))
         # ---- etapa 5

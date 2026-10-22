@@ -4,14 +4,20 @@ Cache (pode ser apagado a qualquer momento; o app refaz):
   <cache>/<id do vídeo>/analysis.json
   <cache>/<id do vídeo>/scope.npy        vectorscope médio (128×128)
   <cache>/<id do vídeo>/thumbs/*.jpg     miniaturas dos frames marcados
+  <cache>/<id do vídeo>/REANALISAR       marca: "Analisar de novo" foi pedido (some com a análise nova)
 
 O id do vídeo é nome do arquivo + duração: o mesmo vídeo em outro
-computador (ou outra pasta) tem o mesmo id.
+computador (ou outra pasta) tem o mesmo id. Por isso a análise guarda também
+o tamanho do arquivo ("source"): o vídeo que volta corrigido com o MESMO nome e
+a MESMA duração tem outro tamanho e é analisado de novo sozinho (o cache velho
+mostraria os frames da versão com erro). O id não muda: editor, comentários e as
+horas do mês continuam iguais.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -48,6 +54,71 @@ class Settings:
     error_phrases: list = field(default_factory=lambda: list(speech.ERROR_PHRASES_DEFAULT))
 
 
+REANALYZE_MARK = "REANALISAR"
+
+
+def source_of(path: str | Path) -> dict:
+    """O que identifica o ARQUIVO analisado (o id só tem nome + duração)."""
+    try:
+        return {"size": Path(path).stat().st_size}
+    except OSError:
+        return {}
+
+
+def is_stale(analysis: dict, path: str | Path | None) -> bool:
+    """A análise guardada é de outro arquivo com o mesmo nome e duração (vídeo corrigido)?
+    Análise antiga sem "source" ou vídeo que não está neste computador: não dá para saber → False."""
+    size = (analysis.get("source") or {}).get("size")
+    if not size or not path:
+        return False
+    try:
+        return Path(path).stat().st_size != size
+    except OSError:
+        return False
+
+
+def marked(cache_root: str | Path, vid: str) -> bool:
+    """O JP pediu "Analisar de novo" e a análise nova ainda não terminou."""
+    return (Path(cache_root) / vid / REANALYZE_MARK).exists()
+
+
+def mark_reanalyze(cache_root: str | Path, vid: str) -> bool:
+    """Marca o vídeo para ser analisado do zero na próxima passada (sobrevive a fechar o app e à fila)."""
+    d = Path(cache_root) / vid
+    if not d.is_dir():
+        return False
+    try:
+        (d / REANALYZE_MARK).write_text("pedido em " + time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def cache_ok(cache_root: str | Path, vid: str, path: str | Path | None) -> bool:
+    """Tem análise no cache que vale para ESTE arquivo (versão certa, mesmo arquivo, sem pedido de refazer)."""
+    d = Path(cache_root) / vid
+    if not vid or (d / REANALYZE_MARK).exists():
+        return False
+    try:
+        a = json.loads((d / "analysis.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return a.get("analysis_version") == ANALYSIS_VERSION and not is_stale(a, path)
+
+
+def _wipe(out_dir: Path) -> None:
+    """Apaga o cache do vídeo (análise, miniaturas, frames cheios, trechos, fala) para refazer do zero."""
+    shutil.rmtree(out_dir, ignore_errors=True)
+    # no Windows um arquivo aberto (trecho tocando) pode ficar: o que sobrou é refeito por cima
+    if out_dir.exists():
+        for p in out_dir.rglob("*"):
+            if p.is_file():
+                try:
+                    p.unlink()
+                except OSError:
+                    pass
+
+
 def video_id(name: str, duration: float) -> str:
     key = f"{name}|{round(duration, 1)}"
     return hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
@@ -78,10 +149,15 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
     vid = video_id(path.name, info.duration)
     out_dir = Path(cache_root) / vid
     out_json = out_dir / "analysis.json"
-    if out_json.exists() and not force:
+    redo = force or (out_dir / REANALYZE_MARK).exists()
+    if out_json.exists() and not redo:
         try:
             cached = json.loads(out_json.read_text(encoding="utf-8"))
-            if cached.get("analysis_version") == ANALYSIS_VERSION:
+            if is_stale(cached, path):
+                redo = True          # voltou corrigido com o mesmo nome e duração: refaz tudo
+            elif cached.get("analysis_version") == ANALYSIS_VERSION:
+                if not cached.get("source"):
+                    cached["source"] = source_of(path)
                 if cached.get("speech_version") != SPEECH_VERSION or \
                         (settings.transcribe and (cached.get("speech") or {}).get("status") != "ok"):
                     update_audio_speech(cached, path, out_dir, settings, progress)
@@ -94,6 +170,8 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
                 return cached
         except (OSError, json.JSONDecodeError):
             pass
+    if redo and out_dir.exists():
+        _wipe(out_dir)
     (out_dir / "thumbs").mkdir(parents=True, exist_ok=True)
     rate = info.rate
     timings = {}
@@ -228,6 +306,7 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
         "id": vid,
         "file": path.name,
         "path": str(path),
+        "source": source_of(path),
         "duration": info.duration,
         "fps": f"{rate.fps.numerator}/{rate.fps.denominator}",
         "frames": info.frames,

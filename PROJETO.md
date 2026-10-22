@@ -624,6 +624,32 @@ Montagem-11 (21/10): Mac e Windows TUDO OK no diagnóstico; sintéticos no Mac d
 - Junto: render() do app.js agora desenha uma tela de cada vez (trocar de tela muito rápido misturava
   duas telas e deixava os atalhos da antiga ligados — visto nas capturas).
 
+## Pedidos do JP de 22/10/2026
+1. ANALISAR DE NOVO. Problema: vídeo que volta para a 2ª revisão com o MESMO nome e a MESMA duração tem o
+   mesmo id (nome + duração) e abria a análise antiga do cache ("Análise anterior"), com frames da versão
+   com erro. Agora:
+   - analysis.json guarda "source": {"size"} (tamanho do arquivo). analyze.is_stale: tamanho diferente =
+     outro arquivo → refaz do zero (apaga cache/<id>/ inteiro: miniaturas, frames cheios, trechos, fala).
+     Análise antiga sem "source" ganha o campo na próxima leitura (não dá para saber se mudou antes).
+   - Botão "Analisar de novo": ↻ no fim de cada linha pronta da tela de Análise e seção no fim de
+     "Ajustes" na revisão; janela com "Só o vídeo NN" / "Todos os vídeos da pasta". Rota POST
+     /api/reanalyze {id | "all"}: grava a marca cache/<id>/REANALISAR (analyze.mark_reanalyze; sobrevive a
+     fechar o app e à fila) e põe a pasta na frente da fila (se outra pasta analisa, é a próxima).
+   - Enquanto a marca existe ou o arquivo é outro, App.load_analysis devolve None (aba "analisando").
+   - Mesmo id → NÃO muda editor, comentários, rodada, entrega nem as horas do mês (conta uma vez).
+   - Imagens com versão no endereço (&v=analyzed_at, video_view "ver" e final rows "ver"): o navegador
+     não mostra a imagem guardada da versão anterior. FrameService.forget(id) limpa a memória do vídeo.
+   - Fila: open_saved compara (id, tamanho) para saber se a pasta mudou. jobs.snapshot "cached" só
+     quando a análise é deste arquivo (analyze.cache_ok).
+   - Testes: tests/test_reanalisar.py.
+2. Vectorscope com quadrados coloridos (R, Mg, B, Cy, G, Yl; SCOPE_TARGET_COLORS em app.js) no resumo
+   geral, em G e no conta-gotas (todos usam scopeOverlay).
+3. Sugestões do antigo chefe do JP (CONVERSAR ANTES, não feitas): copiar imagem + comentário juntos para
+   o Trello (ferramenta dele: "conferevideo"; o Claude não conseguiu abrir o código — sites fora da lista
+   do ambiente) e Vulkan no Windows. Ver a conversa de 22/10.
+- tools/ui_smoke.py precisa de um REVISOR_HOME com a equipe "Mônica" (configuracoes.json com
+  {"editors":[{"name":"Mônica","active":true}]}) e de um Relatorio_tempo_*.txt na pasta das aulas.
+
 ## Correções do Windows (21/10/2026, 1º uso do JP no Windows com a 1.0.0)
 - Análise "travada em 93%": 93% é o fim do OCR e o começo da leitura do áudio. O FFmpeg manda o áudio
   por um cano (stdout) e as mensagens por outro (stderr); o app só lia as mensagens no fim. No Windows o

@@ -66,6 +66,13 @@ class FrameService:
                 store.move_to_end(key)
             return v
 
+    def forget(self, vid: str) -> None:
+        """Esquece o que está na memória de um vídeo (ele vai ser analisado de novo)."""
+        with self._mem_lock:
+            for store in (self._yuv, self._scopes):
+                for key in [k for k in store if k[0] == vid]:
+                    del store[key]
+
     # ------------------------------------------------------------ JPEG
     def jpeg(self, vid: str, video_path: str | None, rate: Rate, frame: int, size: str = "thumb",
              width: int = 1920) -> Path | None:

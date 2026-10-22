@@ -113,6 +113,9 @@ input[type=range]{width:100%;accent-color:var(--accent)}
 .c-st{width:240px;display:flex;flex-direction:column;gap:6px}
 .c-st .s{font-size:13px;font-weight:500}
 .c-found{width:200px;font-size:13px;color:var(--text-3)}
+.c-redo{width:36px;flex:none;display:flex;justify-content:center}
+.icon-btn.small{width:34px;height:34px;color:var(--text-3)}
+.icon-btn.small:hover{color:var(--text)}
 .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}
 .bar>i{display:block;height:100%;background:var(--accent);transition:width .4s}
 .bar.big{height:8px;border-radius:4px}
@@ -597,3 +600,8 @@ body.rv-on #screen{flex:1;min-height:0;display:flex;flex-direction:column}
 .rv-ta.rv-ta-gen{min-height:64px}
 .f-th.gen{color:var(--accent-text);font-weight:600;letter-spacing:.04em;text-transform:uppercase;font-size:11px}
 .f-gen{font-size:12px;text-align:right;min-width:150px}
+
+/* ---------- analisar de novo (22/10) ---------- */
+.adj-redo{display:flex;align-items:center;gap:14px;padding-top:14px;border-top:1px solid var(--line)}
+.adj-redo>div{flex:1;display:flex;flex-direction:column;gap:4px;font-size:13px}
+.adj-redo .btn{flex:none;gap:6px}

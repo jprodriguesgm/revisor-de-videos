@@ -48,6 +48,7 @@ const ICONS = {
   film: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg>',
   up: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   close: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  redo: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>',
 };
 function icon(name) {
   const t = document.createElement("template");
@@ -674,6 +675,32 @@ async function savedDialog() {
     h("button", { class: "btn ghost", text: "Fechar", onclick: closeModal })]);
 }
 
+/** "Analisar de novo" (pedido do JP, 22/10): vídeo que voltou e abriu com a análise antiga do cache.
+ *  vid = id do vídeo (ou null: só a pasta toda). after(res) roda depois de pedir. */
+function reanalyzeDialog(vid, label, after) {
+  const ask = async (id) => {
+    try {
+      const res = await api("reanalyze", { id });
+      closeModal();
+      toast(res.queued ? `Vai analisar de novo logo depois de “${res.running}”.`
+        : `Analisando de novo ${res.videos === 1 ? "o vídeo" : `${res.videos} vídeos`}. Abre sozinho quando terminar.`);
+      if (after) after(res);
+    } catch (e) { toast(e.message, true); }
+  };
+  openModal("Analisar de novo", [
+    h("p", { style: { margin: 0 }, text: "Para quando o vídeo voltou corrigido e o app abriu a análise antiga. " +
+      "O app refaz a análise do zero (frames, texto, áudio e falas), sem usar o que estava guardado." }),
+    h("div", { class: "notice info" }, icon("info"),
+      h("span", { text: "Não muda: editor, comentários, entrega da edição e as horas do mês (o vídeo continua contando uma vez só)." })),
+    h("p", { class: "muted", style: { margin: 0, fontSize: "13px" },
+      text: "Se o arquivo foi trocado por outro com o mesmo nome e a mesma duração, o app agora percebe sozinho e analisa de novo." })],
+    [h("button", { class: "btn ghost", text: "Cancelar", onclick: closeModal }),
+     h("span", { style: { flex: 1 } }),
+     h("button", { class: "btn" + (vid ? " ghost" : ""), text: "Todos os vídeos da pasta", onclick: () => ask("all") }),
+     vid ? h("button", { class: "btn", style: { background: "var(--accent)", borderColor: "var(--accent)" },
+       text: label ? `Só o ${label}` : "Só este vídeo", onclick: () => ask(vid) }) : null]);
+}
+
 // ====================================================================== 2 · Análise
 
 async function screenAnalise(root) {
@@ -710,9 +737,16 @@ async function screenAnalise(root) {
         h("section", { class: "panel table" },
           h("div", { class: "thead caps" }, h("span", { class: "c-n", text: "Nº" }), h("span", { class: "c-name", text: "Vídeo" }),
             h("span", { class: "c-dur", text: "Duração" }), h("span", { class: "c-st", text: "Situação" }),
-            h("span", { class: "c-found", text: "Achados" })),
+            h("span", { class: "c-found", text: "Achados" }), h("span", { class: "c-redo" })),
           rows),
         h("aside", { class: "side" }, prog, btnMain, btnPause, qBox, rep)))));
+
+  // botão por vídeo: analisar de novo (vídeo pronto ou com análise anterior)
+  const redoBtn = (v, show) => h("span", { class: "c-redo" }, show ? h("button", { class: "icon-btn small",
+    title: `Analisar o vídeo ${pad(v.n)} de novo (sem usar a análise guardada)`,
+    "aria-label": `Analisar o vídeo ${pad(v.n)} de novo`,
+    onclick: () => reanalyzeDialog(v.id, `vídeo ${pad(v.n)}`, () => { tick(); if (!poll) poll = setInterval(tick, 800); }) },
+    icon("redo")) : null);
 
   let qSig = "";
   async function drawQueue(force) {
@@ -739,7 +773,7 @@ async function screenAnalise(root) {
         h("span", { class: "c-dur", text: fmtClock(v.duration) }),
         h("div", { class: "c-st" }, h("span", { class: "s", style: { color: v.cached ? "var(--accent-text)" : "var(--faint)" },
           text: v.status === "erro" ? "Erro" : v.cached ? "Análise anterior" : "Na fila" })),
-        h("span", { class: "c-found", text: v.cached ? "abre normalmente" : "—" }))));
+        h("span", { class: "c-found", text: v.cached ? "abre normalmente" : "—" }), redoBtn(v, v.cached))));
       prog.replaceChildren(h("span", { class: "caps", text: "Esperando a vez" }),
         h("span", { style: { fontSize: "14px" }, text: q && q.running ? `Esta pasta começa quando “${q.running}” terminar` +
           (me && me.position > 1 ? ` (é a ${me.position}ª da fila).` : ".") : "Esta pasta começa em seguida." }),
@@ -778,7 +812,7 @@ async function screenAnalise(root) {
           v.status === "run" ? h("div", { class: "bar" }, h("i", { style: { width: `${Math.round(v.pct * 100)}%` } })) : null),
         h("span", { class: "c-found", title: v.status === "erro" ? (v.detail || v.error || "") : null,
           style: v.status === "erro" ? { color: "var(--bad)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } : null,
-          text: found }));
+          text: found }), redoBtn(v, v.status === "ok"));
     }));
     const finished = ["done", "cancelled", "error"].includes(j.state);
     let eta = "";
@@ -821,6 +855,9 @@ async function screenAnalise(root) {
 
 // ====================================================================== 3 · Resumo geral
 
+/** Cor de cada alvo do vectorscope (clara o bastante para o fundo escuro do gráfico). */
+const SCOPE_TARGET_COLORS = { R: "#ff5a5a", Mg: "#f064f0", B: "#6f8cff", Cy: "#45d8e0", G: "#52d66a", Yl: "#ecd94a" };
+
 function scopeOverlay(scope) {
   const NS = "http://www.w3.org/2000/svg";
   const s = (tag, attrs, text) => {
@@ -844,10 +881,12 @@ function scopeOverlay(scope) {
     stroke: "#b5b5b5", "stroke-width": "1.2", "stroke-dasharray": "5 4" }));
   for (const [name, p] of Object.entries(scope.targets)) {
     const x = p.x * W, y = p.y * W;
-    svg.appendChild(s("rect", { x: x - 7, y: y - 7, width: 14, height: 14, fill: "none", stroke: "#8a8a8a", "stroke-width": "1.5" }));
+    // quadrado na cor do próprio alvo (pedido de 22/10), como nos scopes do Premiere/DaVinci
+    const col = SCOPE_TARGET_COLORS[name] || "#8a8a8a";
+    svg.appendChild(s("rect", { x: x - 7, y: y - 7, width: 14, height: 14, fill: "none", stroke: col, "stroke-width": "1.6" }));
     const dx = x - c, dy = y - c, d = Math.hypot(dx, dy) || 1;
     svg.appendChild(s("text", { x: x + (dx / d) * 22, y: y + (dy / d) * 22 + 4, "text-anchor": "middle",
-      "font-size": "12", fill: "#a8a8a8", "font-family": "IBM Plex Sans, sans-serif" }, name));
+      "font-size": "12", fill: col, "fill-opacity": "0.85", "font-family": "IBM Plex Sans, sans-serif" }, name));
   }
   return svg;
 }
@@ -949,7 +988,7 @@ async function screenResumo(root) {
           h("span", { class: "muted", style: { fontSize: "12px" }, text: "Cor média de todos os vídeos (Rec.709)" })),
         h("div", { class: "scope-box", style: { background: "#101010", borderRadius: "10px" } }, scopeImg, scopeOverlay(view.scope)),
         h("span", { class: "muted", style: { alignSelf: "stretch", fontSize: "12px" },
-          text: "Quadrados: alvos de cor a 75 %. Linha tracejada: tom de pele." })),
+          text: "Quadrados coloridos: alvos de cor a 75 % (R, Mg, B, Cy, G, Yl). Linha tracejada: tom de pele." })),
       h("a", { class: "btn primary", href: "#/revisao/1", text: "Começar revisão pelo vídeo 01" }),
       h("span", { class: "muted", style: { fontSize: "12px", textAlign: "center" },
         text: "O editor pode ser marcado agora ou na aba de cada vídeo." }))));

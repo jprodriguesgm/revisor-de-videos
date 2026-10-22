@@ -237,7 +237,7 @@ async function screenRevisao(root, arg) {
   const cur = { i: items.length ? 0 : null, step: null, frame: items.length ? items[0].frame : (M.content ? M.content.first_frame : 0) };
   const curItem = () => (cur.i === null ? null : items[cur.i]);
   const tcOf = (f) => fmtTC(R, f, V.time_format);
-  const frameUrl = (f, s) => `/api/frame.jpg?id=${vid}&f=${f}&s=${s}`;
+  const frameUrl = (f, s) => `/api/frame.jpg?id=${vid}&f=${f}&s=${s}&v=${V.ver || ""}`;
 
   function drawCount() {
     const c = V.counts;
@@ -727,7 +727,7 @@ async function screenRevisao(root, arg) {
     return { svg, labels: lines.map(([code, lab]) => h("span", { style: { top: `${((255.5 - code) / 256) * 100}%` }, text: lab })) };
   }
   function scopeImg(kind) {
-    return h("img", { alt: "", src: `/api/fscope.png?id=${vid}&f=${cur.frame}&k=${kind}`,
+    return h("img", { alt: "", src: `/api/fscope.png?id=${vid}&f=${cur.frame}&k=${kind}&v=${V.ver || ""}`,
       onerror: (e) => { e.target.replaceWith(h("div", { class: "faint scope-err", text: "Gráfico indisponível" })); } });
   }
   function drawGraphs() {
@@ -748,7 +748,7 @@ async function screenRevisao(root, arg) {
         h("div", { class: "vs" }, M.has_video ? scopeImg("vector") : null, scopeOverlay(V.scope)),
         h("div", { class: "muted", style: { fontSize: "12px", lineHeight: 1.5, flex: 1 } },
           h("b", { style: { color: "var(--text-2)" }, text: "Vectorscope YUV deste frame" }), h("br"),
-          "Quadrados: alvos de cor Rec.709 a 75%. Linha tracejada: tom de pele (123°).", h("br"),
+          "Quadrados coloridos: alvos de cor Rec.709 a 75%. Linha tracejada: tom de pele (123°).", h("br"),
           "O vectorscope do resumo geral (cor média de todos os vídeos) não muda.")));
   }
 
@@ -1261,7 +1261,14 @@ async function screenRevisao(root, arg) {
       h("p", { class: "muted", style: { margin: 0, fontSize: "13px" }, text: "Valem para todos os vídeos desta revisão e mudam na hora, sem analisar de novo." }),
       h("div", { class: "field" }, h("label", { for: "adj-sens" }, "Sensibilidade da detecção de frames · ", sv), sens,
         h("div", { class: "ends" }, h("span", { text: "Só as mudanças mais fortes" }), h("span", { text: "Mais frames marcados" }))),
-      h("div", { class: "field" }, h("label", { for: "adj-grp", text: "Juntar listas e textos que entram aos poucos" }), grp)],
+      h("div", { class: "field" }, h("label", { for: "adj-grp", text: "Juntar listas e textos que entram aos poucos" }), grp),
+      // pedido do JP (22/10): vídeo que voltou e abriu com a análise antiga
+      h("div", { class: "adj-redo" },
+        h("div", {}, h("b", { text: "Analisar de novo" }),
+          h("span", { class: "muted", text: "Refaz a análise do zero, sem usar a guardada. Editor, comentários e horas do mês não mudam." })),
+        M.has_video ? h("button", { class: "btn ghost small", onclick: () => reanalyzeDialog(vid, `vídeo ${nn}`, () => render()) },
+          rvIcon("redo"), "Analisar de novo")
+          : h("span", { class: "faint", style: { fontSize: "12px" }, text: "O vídeo não está neste computador." }))],
       [h("button", { class: "btn ghost", text: "Cancelar", onclick: closeModal }),
        h("button", { class: "btn", style: { background: "var(--accent)", borderColor: "var(--accent)" }, text: "Aplicar", onclick: async () => {
          try {

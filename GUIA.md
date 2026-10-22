@@ -134,6 +134,11 @@ primeiro vídeo fica pronto, clique em **Revisar o vídeo 01 enquanto analisa**.
 
 - **Pausar análise** para e continua de onde parou.
 - Um vídeo com problema não para os outros.
+- **Analisar de novo** (botão ↻ no fim da linha de cada vídeo pronto): refaz a análise daquele vídeo
+  (ou da pasta toda) do zero, sem usar a guardada. Editor, comentários, entrega e as horas do mês não
+  mudam — o vídeo continua contando uma vez só. Útil quando um vídeo volta para a segunda revisão e
+  aparece como "Análise anterior". Se o arquivo foi trocado por outro com o mesmo nome e a mesma
+  duração, o app já percebe sozinho e analisa de novo.
 
 ### Passo 3 — Resumo geral
 
@@ -260,7 +265,7 @@ continua igual ao trocar de item, para comparar o mesmo texto entre frames.
 ### Gráficos (G)
 
 Waveform (luma ou parade RGB) e vectorscope **do frame**, lidos do vídeo original, com os alvos de cor
-Rec.709 e a linha de tom de pele. Acompanham o frame ao andar com ← →.
+Rec.709 (quadrados coloridos: R, Mg, B, Cy, G, Yl) e a linha de tom de pele. Acompanham o frame ao andar com ← →.
 
 ![Gráficos do frame](docs/guia/12-graficos.png)
 
@@ -278,7 +283,8 @@ lugar ao trocar de frame (para comparar). **Limpar pontos** tira todos.
 - **Navegar slides** (barra de cima): inclui cada slide em tela cheia na navegação com ← →, para
   conferir o texto de cada um. Liga/desliga para todas as revisões.
 - **Ajustes** (barra de cima): sensibilidade da detecção e "juntar listas". Mudam na hora, sem
-  analisar de novo.
+  analisar de novo. Embaixo, **Analisar de novo**: refaz a análise deste vídeo (ou da pasta toda) do
+  zero, sem mexer no editor, nos comentários nem nas horas do mês.
 - **Editor deste vídeo** (barra de cima): quem editou; **Aplicar a todos** marca todos os vídeos.
 - **Rodapé:** os 5 frames da passagem vinheta → vídeo e vídeo → vinheta, a tira com todos os itens
   (ponto âmbar = aviso; ponto azul = comentado) e a forma de onda do áudio inteiro (faixa roxa =
@@ -388,6 +394,8 @@ Para saber qual versão você tem: **Configurações**, no fim do menu da esquer
 - **O trecho (V) não toca:** confira se o vídeo ainda está na pasta. O app tenta o vídeo original e,
   se o navegador não tocar, gera um trecho compatível (leva alguns segundos).
 - **Nenhum editor para escolher:** cadastre a equipe em **Configurações → Equipe**.
+- **O vídeo voltou corrigido, mas aparecem os frames antigos:** use **Analisar de novo** (↻ na tela
+  de análise, ou Ajustes → Analisar de novo na revisão).
 - **Algo estranho aconteceu:** o arquivo `revisor.log` mostra o que o app fez. Ele fica em
   - Mac: `~/Library/Application Support/Revisor de Vídeos`
   - Windows: `%APPDATA%\Revisor de Vídeos`

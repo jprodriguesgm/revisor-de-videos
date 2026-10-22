@@ -44,7 +44,7 @@ function tick(on) {
 
 /** Frame de um comentário (do vídeo, do cache ou do pacote) como data URL JPEG até 1280 px. */
 async function commentImage(r) {
-  const res = await fetch(`/api/cframe.jpg?id=${r.vid}&f=${r.frame}&s=full`);
+  const res = await fetch(`/api/cframe.jpg?id=${r.vid}&f=${r.frame}&s=full&v=${r.ver || ""}`);
   if (!res.ok) return null;
   const bmp = await createImageBitmap(await res.blob());
   const k = Math.min(1, 1280 / bmp.width);
@@ -131,7 +131,7 @@ async function screenFinal(root) {
       checkbox(r.selected, r.general ? `Incluir o comentário geral do vídeo ${pad(r.n)}` : `Incluir o comentário do vídeo ${pad(r.n)} em ${r.tc}`,
         (on) => mark(r.cid, { selected: on })),
       r.general ? h("div", { class: "f-th none gen", text: "geral" }) : r.with_frame
-        ? h("div", { class: "f-th" }, h("img", { src: `/api/cframe.jpg?id=${r.vid}&f=${r.frame}&s=thumb`, alt: "Frame do comentário",
+        ? h("div", { class: "f-th" }, h("img", { src: `/api/cframe.jpg?id=${r.vid}&f=${r.frame}&s=thumb&v=${r.ver || ""}`, alt: "Frame do comentário",
             loading: "lazy", onerror: (e) => { e.target.replaceWith(h("span", { class: "f-noimg", text: "sem imagem neste computador" })); } }))
         : h("div", { class: "f-th none", text: "sem imagem" }),
       h("a", { class: "f-when", href: `#/revisao/${r.n}`, title: `Abrir o vídeo ${pad(r.n)} na revisão` },

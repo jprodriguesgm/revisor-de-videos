@@ -30,7 +30,8 @@ def scan_folder(folder: str | Path) -> dict:
     vids = analyze.list_videos(folder)
     newest = None
     for v in vids:
-        item = {"file": v.name, "path": str(v), "duration": None, "id": None, "error": None, "detail": None}
+        item = {"file": v.name, "path": str(v), "duration": None, "id": None, "error": None, "detail": None,
+                "size": analyze.source_of(v).get("size")}
         try:
             info = media.probe(v)
             item["duration"] = info.duration
@@ -90,6 +91,7 @@ class AnalysisJob:
         self._cancel = False
         self._thread = None
         self._lock = threading.Lock()
+        self._cache_ok: dict[str, bool] = {}     # vídeo esperando a vez: a análise do cache vale para este arquivo?
 
     # ------------------------------------------------------------ controle
     def start(self):
@@ -130,7 +132,7 @@ class AnalysisJob:
                 self._checkpoint()
                 v["status"] = "run"
                 v["started"] = time.time()
-                cached = (self.cache_root / v["id"] / "analysis.json").exists()
+                cached = analyze.cache_ok(self.cache_root, v["id"], v["path"])
 
                 def prog(x, v=v):
                     v["pct"] = max(v["pct"], min(float(x), 1.0))
@@ -216,9 +218,16 @@ class AnalysisJob:
             "pct": round(done_d / total_d, 4),
             "eta_s": self.eta_s(),
             "videos": [{k: v[k] for k in ("n", "id", "file", "duration", "status", "error", "detail", "pct", "row")}
-                       | {"cached": v["status"] == "wait" and (self.cache_root / v["id"] / "analysis.json").exists()}
+                       | {"cached": v["status"] == "wait" and self._cached(v)}
                        for v in self.videos],
         }
+
+    def _cached(self, v: dict) -> bool:
+        """"Análise anterior" só quando ela é deste mesmo arquivo (lido uma vez por análise)."""
+        hit = self._cache_ok.get(v["id"])
+        if hit is None:
+            hit = self._cache_ok[v["id"]] = analyze.cache_ok(self.cache_root, v["id"], v["path"])
+        return hit
 
     def analysis(self, vid: str) -> dict | None:
         with self._lock:
