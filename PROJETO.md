@@ -920,6 +920,18 @@ Limites conhecidos da etapa 2:
   "Etapa 6". Falta o JP testar no Mac (casa e trabalho) e no Windows com as aulas reais.
 - Pedidos do JP de 21/10 (fila de pastas, ↑ ↓ nos cortes, Próxima aula, abas, trecho com duração,
   medidor de áudio) — feitos (21/10). Ver "Pedidos do JP depois do uso no dia a dia".
+- ANTIVÍRUS (22/10, 11h): o JP pôs no Windows e o antivírus acusou "trojan" (falso positivo; nome exato
+  do alerta ainda não informado). Causas prováveis: app sem assinatura + PyInstaller + PowerShell escondido
+  com -EncodedCommand e Add-Type/AttachThreadInput/SetForegroundWindow (janela de pasta, montagem 3/4).
+  Decisão do JP: no Windows, SÓ o navegador de pastas do app (dialogs.py levanta Unsupported no Windows;
+  /api/state "native_dialog": false → choose() vai direto ao browse()). Tirados: scripts PowerShell,
+  packaging/check_dialog_ps.py e o passo "Janela de escolher pasta" do montar.yml. Nome da placa de vídeo
+  lido do registro (winreg), não do PowerShell. montar.yml: passo "Sem PowerShell no app (Windows)" falha
+  se o código chamar powershell/pwsh/EncodedCommand; bootloader do PyInstaller montado do código no Windows
+  (PYINSTALLER_COMPILE_BOOTLOADER=1, --no-binary pyinstaller). Navegador do app: atalhos Área de Trabalho,
+  Downloads, Vídeos, Filmes, Documentos; título conforme o pedido; dica de colar o caminho.
+  Se ainda acusar: enviar o arquivo à Microsoft (falso positivo) e/ou assinatura digital (TI da PUC ou
+  Azure Trusted Signing).
 - ONDE PARAMOS (22/10/2026, fim): montagem de teste com Vulkan no Windows (ver "Pedidos do JP de 22/10",
   item 4). Esperando o JP testar no Windows (aparece "Falas: na placa de vídeo (NVIDIA …)"?) e no Mac.
 - (antes, 22/10 tarde): "Montagem 4 (teste)" = correções do Windows da montagem 3 + "Analisar de

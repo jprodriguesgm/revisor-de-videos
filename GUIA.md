@@ -75,6 +75,12 @@ funciona.
    **Mais informações** → **Executar assim mesmo** (só na primeira vez).
 4. A página abre no navegador. Para fechar, use **Sair** ou feche a aba.
 
+**Se o antivírus acusar "Trojan" ou "vírus":** é alarme falso. O app não tem assinatura digital
+(certificado pago), e programas novos sem assinatura são vistos como suspeitos pelo Windows. Não
+desative o antivírus por conta própria no computador do trabalho: fale com a TI, que pode liberar o
+app (o código é aberto e está neste repositório). O app do Windows não usa o PowerShell, justamente
+para não parecer suspeito.
+
 Dica: deixe a página aberta no Chrome, no Safari ou no Edge. Ela funciona como um app normal; pode
 até ser salva nos favoritos (o endereço é parecido com `http://127.0.0.1:8765`).
 
@@ -112,7 +118,9 @@ se estão inteiras, cortadas ou faltando.
 
 ### Passo 1 — Início: escolher a pasta
 
-1. **Escolher pasta** → a pasta com os vídeos **editados** (a pasta de saída da edição).
+1. **Escolher pasta** → a pasta com os vídeos **editados** (a pasta de saída da edição). No Mac
+   abre a janela do sistema; no Windows abre o navegador de pastas do próprio app (atalhos para
+   Área de Trabalho, Downloads, Vídeos e os discos; dá também para colar o caminho e apertar Enter).
 2. O app confere sozinho: quantos vídeos, o tempo total e, se houver, o **relatório de tempo**
    (`Relatorio_tempo_….txt`) com bruto, editado e aproveitamento.
 3. Confira **Professor**, **Entrega da edição** e **Nome na tarja** (como o professor quer o nome

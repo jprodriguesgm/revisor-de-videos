@@ -214,18 +214,31 @@ _win_gpus: list[str] | None = None
 
 
 def windows_gpu_names() -> list[str]:
-    """Nomes das placas de vídeo do Windows (só para mostrar na tela; o Vulkan não diz o nome)."""
+    """Nomes das placas de vídeo do Windows (só para mostrar na tela; o Vulkan não diz o nome).
+    Lidos do registro (sem PowerShell: o antivírus desconfia de programa que chama o PowerShell)."""
     global _win_gpus
     if _win_gpus is None:
         _win_gpus = []
         if os.name == "nt":
             try:
-                r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                                    "(Get-CimInstance Win32_VideoController).Name"],
-                                   capture_output=True, text=True, errors="replace", timeout=10,
-                                   **media._hidden_window_kwargs())
-                _win_gpus = [ln.strip() for ln in r.stdout.splitlines() if ln.strip()]
-            except (OSError, subprocess.SubprocessError):
+                import winreg
+                cls = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+                with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, cls) as k:
+                    for i in range(64):
+                        try:
+                            sub = winreg.EnumKey(k, i)
+                        except OSError:
+                            break
+                        if not sub.isdigit():
+                            continue
+                        try:
+                            with winreg.OpenKey(k, sub) as dk:
+                                name = str(winreg.QueryValueEx(dk, "DriverDesc")[0]).strip()
+                        except OSError:
+                            continue
+                        if name and name not in _win_gpus:
+                            _win_gpus.append(name)
+            except Exception:
                 pass
     return _win_gpus
 

@@ -1618,6 +1618,8 @@ class Handler(BaseHTTPRequestHandler):
             s = APP.settings
             return self._json({
                 "version": __version__,
+                # Windows: sem janela do sistema, direto o navegador de pastas do app (antivírus, 22/10)
+                "native_dialog": os.name != "nt",
                 "settings": {k: s[k] for k in ("vinheta_in", "vinheta_out", "sensitivity", "group_gap_s", "spell",
                                                "transcribe", "history", "last_folder", "time_format")},
                 "editors": appdata.active_editors(s),

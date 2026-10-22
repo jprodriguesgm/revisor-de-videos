@@ -208,7 +208,7 @@ function closeModal() { $("#modal-root").replaceChildren(); }
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
 
 /** Navegador de pastas do próprio app (quando a janela do sistema não abre). */
-function browse(kind, start, onPick) {
+function browse(kind, start, onPick, title) {
   let cur = null, selFile = null;
   const roots = h("div", { class: "roots" });
   const list = h("div", { class: "list" });
@@ -241,8 +241,10 @@ function browse(kind, start, onPick) {
     } catch (e) { toast(e.message, true); }
   }
   where.addEventListener("keydown", (e) => { if (e.key === "Enter") go(where.value); });
-  openModal(kind === "folder" ? "Escolher a pasta dos vídeos" : "Escolher o arquivo da vinheta",
-    [where, h("div", { class: "browser" }, roots, list)],
+  openModal(title || (kind === "folder" ? "Escolher a pasta dos vídeos" : "Escolher o arquivo da vinheta"),
+    [where, h("span", { class: "faint", style: { fontSize: "12px", marginTop: "-6px" },
+      text: "Dica: dá para colar o caminho aqui em cima e apertar Enter (no Windows, copie da barra de endereço do Explorador de Arquivos)." }),
+     h("div", { class: "browser" }, roots, list)],
     [h("button", { class: "btn ghost", text: "Cancelar", onclick: closeModal }), pickBtn], true);
   go(start || "");
 }
@@ -251,6 +253,8 @@ function browse(kind, start, onPick) {
     Enquanto a janela do sistema está aberta, a página mostra um aviso (no Windows ela chegou a abrir
     atrás do navegador e parecia que o app tinha travado) com o navegador de pastas do app como saída. */
 async function choose(kind, prompt, start, onPick) {
+  // Windows: o navegador de pastas do próprio app (a janela do sistema dependia do PowerShell, 22/10)
+  if (S && S.native_dialog === false) { browse(kind, start, onPick, prompt); return; }
   let gaveUp = false;
   const what = kind === "folder" ? "a pasta" : "o arquivo";
   const waitBox = setTimeout(() => {
@@ -260,7 +264,7 @@ async function choose(kind, prompt, start, onPick) {
         text: "Não está vendo? Ela pode ter aberto atrás do navegador: procure na barra de tarefas (Windows) ou no Dock (Mac). " +
               "Ou use o navegador de pastas do próprio app." })],
       [h("button", { class: "btn", type: "button", text: "Usar o navegador do app", onclick: () => {
-        gaveUp = true; closeModal(); browse(kind, start, onPick);
+        gaveUp = true; closeModal(); browse(kind, start, onPick, prompt);
       } })]);
   }, 700);
   try {
@@ -268,13 +272,13 @@ async function choose(kind, prompt, start, onPick) {
     clearTimeout(waitBox);
     if (gaveUp) return;                   // já escolheu pelo navegador do app
     closeModal();
-    if (r.unsupported) return browse(kind, start, onPick);
+    if (r.unsupported) return browse(kind, start, onPick, prompt);
     if (r.path) onPick(r.path);
   } catch (e) {
     clearTimeout(waitBox);
     if (gaveUp) return;
     closeModal();
-    browse(kind, start, onPick);
+    browse(kind, start, onPick, prompt);
   }
 }
 

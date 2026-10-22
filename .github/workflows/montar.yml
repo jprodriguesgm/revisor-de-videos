@@ -122,8 +122,14 @@ jobs:
         run: python packaging/build_deps.py check
 
       - name: Python do app
+        shell: bash
         run: |
           python -m pip install --upgrade pip
+          if [ "${{ matrix.nome }}" = "windows" ]; then
+            # antivírus (22/10): o "envelope" pronto do PyInstaller é o mesmo de muitos vírus; montado aqui,
+            # do código-fonte, ele fica diferente e o Windows Defender desconfia bem menos
+            PYINSTALLER_COMPILE_BOOTLOADER=1 python -m pip install --no-binary pyinstaller pyinstaller
+          fi
           python -m pip install -r requirements.txt pyinstaller pytest
 
       # O pip num Mac 14 escolhe o numpy "só macOS 14+"; o Mac do trabalho pode ser mais antigo.
@@ -192,23 +198,15 @@ jobs:
           [ $rc -eq 0 ] || echo "::error title=Diagnóstico Windows::$(tr '\n' '|' < diag-windows.txt)"
           exit $rc
 
-      # janela de escolher pasta (abria atrás do navegador, 21/10): o script tem que ser válido e o
-      # pedaço que traz a janela para a frente tem que compilar no Windows PowerShell (o que o app usa)
-      - name: Janela de escolher pasta (Windows)
+      # antivírus (22/10): o app do Windows não chama o PowerShell (padrão que o Defender confunde com vírus)
+      - name: Sem PowerShell no app (Windows)
         if: matrix.nome == 'windows'
-        shell: powershell
+        shell: bash
         run: |
-          python packaging/check_dialog_ps.py .
-          foreach ($n in 'dlg_pasta.ps1','dlg_arquivo.ps1') {
-            $err = $null
-            [void][System.Management.Automation.Language.Parser]::ParseFile("$PWD\$n", [ref]$null, [ref]$err)
-            if ($err) { $err | Out-String | Write-Output; Write-Output "::error title=Janela::$n com erro"; exit 1 }
-          }
-          $r = powershell -NoProfile -File .\dlg_addtype.ps1 2>&1 | Out-String
-          Write-Output $r
-          if ($r -notmatch 'Add-Type ok') { Write-Output "::error title=Janela::Add-Type não compilou: $r"; exit 1 }
-          Write-Output "janela de pasta: script ok, Add-Type ok"
-          Add-Content -Encoding ascii -Path diag-windows.txt -Value "janela de pasta: script ok, Add-Type ok"
+          if grep -rniIE "[\"'](powershell|pwsh)|encodedcommand" revisor --include=*.py; then
+            echo "::error title=Antivírus::o código do app chama o PowerShell"; exit 1
+          fi
+          echo "sem PowerShell no app: ok" | tee -a diag-windows.txt
 
       - name: Teste rápido com o app montado (Mac)
         if: matrix.nome == 'mac'
