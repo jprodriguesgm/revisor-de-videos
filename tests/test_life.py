@@ -67,13 +67,17 @@ def test_segunda_copia_e_sair(tmp_path):
     cmd = [sys.executable, "-m", "revisor", "abrir", "--sem-navegador", "--porta", "8899", "--fechar-sozinho"]
     p = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     try:
+        # até 60 s: na máquina Mac do GitHub (macos-15) a 1ª abertura do Python é lenta (passava de 10 s)
         url = None
-        for _ in range(100):
+        fim = time.time() + 60
+        while time.time() < fim and p.poll() is None:
             url = life.running_url(tmp_path, timeout=0.3)
             if url:
                 break
-            time.sleep(0.1)
-        assert url, "o app não abriu"
+            time.sleep(0.2)
+        if not url:
+            p.kill()
+            assert url, f"o app não abriu: {(p.communicate(timeout=5)[0] or '')[-800:]}"
         assert _post(url + "api/ping", {"client": "t"})["packaged"] is True
         # segunda cópia: só aponta para a primeira e sai
         r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=30)

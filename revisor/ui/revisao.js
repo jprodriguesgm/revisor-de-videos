@@ -208,8 +208,20 @@ async function screenRevisao(root, arg) {
   if (!V.ready) {
     countTxt.textContent = `Vídeo ${V.n} de ${V.total}`;
     const msg = h("p", { class: "muted" });
+    const redoNow = h("button", { class: "btn primary hidden", type: "button", text: "Analisar este vídeo de novo",
+      onclick: async () => {
+        redoNow.disabled = true;
+        try { const r = await api("reanalyze", { id: vid }); toast(r.queued ? `Vai analisar logo depois de “${r.running}”.` : "Analisando de novo…"); }
+        catch (e) { toast(e.message, true); redoNow.disabled = false; }
+      } });
     const showWait = () => {
       const j = V.job;
+      redoNow.classList.toggle("hidden", !V.stale);
+      if (V.stale) {
+        msg.textContent = "O arquivo deste vídeo mudou depois da análise (voltou corrigido). A análise guardada é da versão " +
+          "anterior, então os frames dela não valem mais. Analise de novo para ver a versão nova.";
+        return;
+      }
       msg.textContent = !j ? "Este vídeo ainda não foi analisado. Volte ao início e analise a pasta." :
         j.status === "erro" ? `Não foi possível analisar este vídeo: ${j.error || "erro"}.` :
         j.status === "run" ? `Analisando este vídeo · ${Math.round((j.pct || 0) * 100)}%` : "Este vídeo está na fila da análise.";
@@ -217,7 +229,7 @@ async function screenRevisao(root, arg) {
     showWait();
     stage.appendChild(h("div", { class: "panel empty-state", style: { margin: "auto", maxWidth: "520px" } },
       h("h2", { style: { margin: 0, fontSize: "18px", color: "var(--text)" }, text: `${nn} · ${stem(V.video.file)}` }), msg,
-      h("a", { class: "btn ghost", href: "#/analise", text: "Ver a análise" })));
+      redoNow, h("a", { class: "btn ghost", href: "#/analise", text: "Ver a análise" })));
     side.appendChild(h("p", { class: "muted", style: { fontSize: "13px" }, text: "A revisão deste vídeo abre sozinha quando a análise dele terminar." }));
     timers.push(setInterval(async () => {
       try {

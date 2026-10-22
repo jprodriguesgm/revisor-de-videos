@@ -943,6 +943,21 @@ Limites conhecidos da etapa 2:
 - MAC DO GITHUB (22/10): macos-14 cancelado 4 vezes seguidas ("capacity constraints" das máquinas Mac arm64;
   o job nem começa). Trocado para macos-15 (também M1/arm64; deployment target 11.0 e check_macos_min continuam
   valendo; o cache dos programas usa a mesma chave). Se o macos-15 também faltar, esperar e rodar de novo.
+- ONDE PARAMOS (22/10/2026, 15h30): VERSÃO OFICIAL 1.0.1 publicada (Mac + Windows, mesmo commit bd22430):
+  analisar de novo, vectorscope colorido, Vulkan no Windows, sem PowerShell (antivírus), data do arquivo ×
+  análise. Diagnóstico TUDO OK nos dois; Mac 40/41 (o +7 frames conhecido da imagem congelada). O JP pediu a
+  oficial sem testar a correção da data (testes automáticos cobrem o caso dele). PRÓXIMO: branch "trello"
+  (Copiar para o Trello, tecla T) → juntar com a main, teste Mac+Windows, depois 1.0.2. Pequeno: no Mac o
+  diagnóstico mostra "placa de vídeo (MTL0 (Apple ...))" — limpar o nome. Medir velocidade do Vulkan no
+  Windows do JP.
+- FRAME ANTIGO NA REVISÃO (22/10, 15h, achado pelo JP testando a Montagem 13): o frame parado mostrava a tarja da
+  versão com erro e o trecho (V), que toca o arquivo, a corrigida. Causa: análise de antes do "source" (sem o
+  tamanho) + a montagem 13 PREENCHIA o tamanho do arquivo novo numa análise velha (trava o erro). Correção:
+  analyze.is_stale também compara a data do arquivo com "analyzed_at" (arquivo salvo > 120 s depois da análise =
+  outro arquivo; data no futuro é ignorada); source ganhou "mtime"; o tamanho não é mais preenchido em análise
+  do cache. App.load_analysis confere também a análise que está na memória da fila. Tela de revisão: vídeo com
+  arquivo trocado e nada analisando mostra o aviso e o botão "Analisar este vídeo de novo" (video_view "stale").
+  A oficial 1.0.1 que estava montando foi CANCELADA antes de publicar (pedido do JP). Novos testes Mac+Windows.
 - ONDE PARAMOS (22/10/2026, fim): montagem de teste com Vulkan no Windows (ver "Pedidos do JP de 22/10",
   item 4). Esperando o JP testar no Windows (aparece "Falas: na placa de vídeo (NVIDIA …)"?) e no Mac.
 - (antes, 22/10 tarde): "Montagem 4 (teste)" = correções do Windows da montagem 3 + "Analisar de

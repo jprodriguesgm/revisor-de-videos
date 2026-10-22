@@ -101,28 +101,42 @@ class App:
         if self.job is not None:
             a = self.job.analysis(vid)
             if a is not None:
-                return a
-        p = self.cache_root() / vid / "analysis.json"
-        try:
-            mt = p.stat().st_mtime
-        except OSError:
-            return None
+                # (o arquivo pode ter sido trocado depois, com o app aberto)
+                return None if analyze.is_stale(a, self._local_file(vid)) else a
         if analyze.marked(self.cache_root(), vid):        # "Analisar de novo" pedido: a análise velha não vale
             return None
-        hit = self._acache.get(vid)
-        if hit and hit[0] == mt:
-            a = hit[1]
-        else:
-            try:
-                a = json.loads(p.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                return None
-            self._acache[vid] = (mt, a)
+        a = self._load_raw(vid)
+        if a is None:
+            return None
         # vídeo que voltou corrigido com o mesmo nome e duração (outro arquivo): os frames do cache são da
         # versão com erro. Fica "analisando" até a análise nova (que a fila faz sozinha).
         if analyze.is_stale(a, self._local_file(vid)):
             return None
         return a
+
+    def _load_raw(self, vid: str) -> dict | None:
+        """analysis.json do cache, sem conferir se ainda vale para o arquivo."""
+        p = self.cache_root() / vid / "analysis.json"
+        try:
+            mt = p.stat().st_mtime
+        except OSError:
+            return None
+        hit = self._acache.get(vid)
+        if hit and hit[0] == mt:
+            return hit[1]
+        try:
+            a = json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        self._acache[vid] = (mt, a)
+        return a
+
+    def is_stale_video(self, vid: str) -> bool:
+        """Tem análise guardada, mas o arquivo do vídeo mudou depois dela (vídeo corrigido)."""
+        if analyze.marked(self.cache_root(), vid):
+            return False
+        a = self._load_raw(vid)
+        return a is not None and analyze.is_stale(a, self._local_file(vid))
 
     def _local_file(self, vid: str) -> str | None:
         """Arquivo do vídeo neste computador, sem olhar o cache (para conferir se a análise é dele)."""
@@ -664,6 +678,9 @@ class App:
         }
         a = self.ready_analysis(v["id"])
         if a is None:
+            # o arquivo mudou depois da análise e nada está analisando ele agora: a tela oferece analisar
+            st = out["job"]
+            out["stale"] = self.is_stale_video(v["id"]) and not (st and st.get("status") in ("run", "wait"))
             return out
         path = self.video_path(v["id"])
         it = summary.review_items(a, sens, spell_on, v.get("dismissed"))
