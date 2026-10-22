@@ -152,8 +152,18 @@ jobs:
           python -c "import re,sys; p='revisor/__init__.py'; s=open(p,encoding='utf-8').read(); open(p,'w',encoding='utf-8').write(re.sub(r'__version__ = \".*\"', '__version__ = \"'+sys.argv[1]+'\"', s))" "$VER"
           python -c "import revisor; print('versão', revisor.__version__)"
 
+      # se algum teste falhar, o resumo vira anotação (o log do Actions não abre no ambiente do Claude)
       - name: Testes
-        run: python -m pytest -q tests
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q -rfE tests > pytest.txt 2>&1
+          rc=$?
+          tail -60 pytest.txt
+          if [ $rc -ne 0 ]; then
+            echo "::error title=Testes::$(grep -E '^(FAILED|ERROR)|Error:|assert |^E  ' pytest.txt | head -40 | tr '\n' '|' | cut -c1-3500)"
+          fi
+          exit $rc
 
       - name: Montar o app (PyInstaller)
         run: pyinstaller --noconfirm packaging/revisor.spec
