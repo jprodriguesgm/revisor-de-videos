@@ -47,7 +47,7 @@ jobs:
           fi
       - id: m
         run: |
-          MAC='{"os":"macos-14","nome":"mac"}'; WIN='{"os":"windows-2022","nome":"windows"}'
+          MAC='{"os":"macos-15","nome":"mac"}'; WIN='{"os":"windows-2022","nome":"windows"}'
           case "${{ inputs.sistemas }}" in
             mac) M="[$MAC]";; windows) M="[$WIN]";; *) M="[$MAC,$WIN]";;
           esac
