@@ -1,7 +1,7 @@
 # Instalar o Revisor de Vídeos
 
 O passo a passo completo, com imagens, está no **[GUIA.md](GUIA.md)** (seção 1: baixar e instalar;
-seção 11: atualizar).
+seção 12: atualizar).
 
 Links diretos (sempre a versão oficial mais nova):
 - Mac: https://github.com/jprodriguesgm/revisor-de-videos/releases/latest/download/Revisor-de-Videos-mac.zip
