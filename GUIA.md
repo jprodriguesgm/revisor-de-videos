@@ -243,6 +243,24 @@ Na janela, escolha **Só o vídeo NN** ou **Todos os vídeos da pasta**:
 **O que NÃO muda:** editor, comentários, entrega da edição e as **horas do mês**. O vídeo continua
 contando **uma vez só** no relatório do mês, no mês da entrega.
 
+### Conferir correções
+
+Quando o vídeo volta, a revisão mostra no topo do painel da direita **"Rodada 2: N comentários da
+rodada anterior"**. Clique em **Conferir correções**:
+
+![Conferir correções](docs/guia/24-conferir-correcoes.png)
+
+- cada comentário da rodada anterior aparece com a imagem de **como estava** e o tempo
+  antigo → o tempo no vídeo novo. O app acha o ponto no vídeo novo pelo **áudio**: se o editor cortou
+  alguma coisa antes, o tempo muda e ele acompanha ("aprox." quando não achou com segurança);
+- o quadro **Antes** aparece por cima do vídeo, para comparar com o frame novo;
+- **✓ Corrigido** ou **✗ Não corrigido** — e o app já pula para o próximo. "Não corrigido" vira um
+  comentário neste vídeo ("Não corrigido: …"), que vai para o Resumo final, a cópia e o SRT;
+- **← →** passam de correção em correção; **Esc** volta à revisão normal.
+
+A imagem de "como estava" é guardada quando você comenta (a partir desta versão). Comentários
+antigos aparecem sem ela.
+
 ---
 
 ## 6. Tela de revisão: todas as funções
@@ -256,6 +274,12 @@ contando **uma vez só** no relatório do mês, no mês da entrega.
   rápida em cada emenda. O frame mostra "corte 3 de 41".
 - **Shift + ← →**: anda 1 frame.
 - **Clique na forma de onda** (embaixo): vai para aquele ponto.
+- **Zoom na forma de onda:** **roda do mouse** sobre ela aproxima em volta do mouse (até ~4 s na
+  largura toda), **Shift + roda** (ou arrastar de lado no trackpad) anda para os lados; botões
+  **− +** e **Tudo** no canto direito. Com zoom, o clique cai no frame exato. Ao navegar com ← →, a
+  janela acompanha a posição.
+
+![Zoom na linha do tempo](docs/guia/26-zoom-linha-do-tempo.png)
 - **Clique numa miniatura** da tira "Frames marcados e avisos": vai para ela.
 - **Próxima aula ›** (canto de cima, à direita) ou **N**: próximo vídeo. Na última aula vira
   **Próxima pasta** (fila) ou **Resumo final**.
@@ -272,6 +296,22 @@ Quando o item é um aviso, aparece um cartão âmbar à direita:
 
 O comentário salva sozinho. Um comentário por frame; apagar o texto apaga o comentário. A lista
 **Neste vídeo** mostra todos, com atalho para ir até cada um.
+
+**Tipo da correção:** embaixo do comentário ficam as etiquetas **Áudio, Cor, Texto, Corte, Tarja,
+Slide, Vinheta, Outro**. Em aviso, o app já sugere uma (contorno tracejado); clique para escolher ou
+trocar. O relatório do mês conta as correções por tipo e por editor.
+
+**Situação do vídeo:** **✓ Aprovado** ou **↩ Volta para o editor**, logo acima do comentário. Aparece
+na aba do vídeo (✓ / ↩), no Resumo final e no relatório do mês (aprovados de primeira × voltaram).
+
+![Situação do vídeo e etiquetas](docs/guia/25-situacao-e-etiquetas.png)
+
+**Avisos novos de imagem:**
+- **Frame solto entre cortes:** sobra de 1 a 3 frames de outro plano entre dois cortes;
+- **Frame preto entre cortes** e **tela preta** (o quadro inteiro preto; o fundo escuro da aula de TV
+  não conta, porque a TV e o professor estão claros);
+- **Vinheta sem fundo:** nas partes transparentes da vinheta (inicial ou final) aparece preto — o
+  editor esqueceu o fundo por baixo dela.
 
 ![Aviso de ortografia e comentário](docs/guia/09-revisao-aviso-e-comentario.png)
 
@@ -379,6 +419,8 @@ Em **Resumo final → Salvar e exportar revisão**:
 
 Botão **Relatório do mês** no topo. Horas de vídeo editado por editor, por curso e por semana, com
 o tempo gravado e o aproveitamento. O mês vem da **data de entrega da edição**, não do dia da revisão.
+O quadro **Revisão por editor** mostra quantos vídeos foram aprovados de primeira, quantos voltaram
+(2ª rodada ou "volta para o editor") e as correções por tipo (as etiquetas dos comentários).
 **Exportar txt** e **Exportar CSV** (abre no Excel).
 
 ![Relatório do mês](docs/guia/17-relatorio-do-mes.png)
@@ -423,6 +465,7 @@ Na tela de revisão:
 | F | tela cheia |
 | ⌘C (Mac) / Ctrl+C (Windows) | copiar frame + comentário |
 | T | copiar para o Trello (imagem do que está na tela + comentário escrito) |
+| Roda do mouse na forma de onda | zoom na linha do tempo (Shift + roda: andar para os lados) |
 | + − | zoom |
 | Z | caber na tela / 100% |
 | Esc | fecha o trecho, os gráficos ou o conta-gotas; sai do campo de texto |

@@ -28,7 +28,8 @@ from . import __version__, audio, media, nametag, ocr, report, speech, spell, tr
 from .timecode import fmt_seconds
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v"}
-ANALYSIS_VERSION = 10  # 9: frame do texto = quando o lettering para; 10: começo da imagem congelada procurado 1,5 s antes
+ANALYSIS_VERSION = 11  # 9: frame do texto = quando o lettering para; 10: começo da imagem congelada procurado 1,5 s antes;
+                       # 11: tela preta, frames soltos entre cortes e vinheta sem fundo (22/10)
 # Fala (etapa 2b) e áudio têm versão própria: mudar a fala não refaz a imagem e o OCR.
 SPEECH_VERSION = 2
 
@@ -224,6 +225,7 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
             progress(0.70 + 0.15 * (k + 1) / max(len(events), 1))
     video.group_lists(events, rate, settings.group_gap_s)
     video.pair_text(events, rate)
+    events += flash_events(events, rate)
     timings["refine_s"] = round(time.time() - t, 2)
 
     # 3b) transições câmera ↔ slide (regra do núcleo)
@@ -365,6 +367,28 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
     if progress:
         progress(1.0)
     return result
+
+
+def flash_events(events: list, rate) -> list:
+    """Frames soltos entre dois cortes (achados no refino de cada corte) viram aviso. Um só por lugar;
+    frame preto que já está num aviso de "tela preta" não repete."""
+    out, seen = [], set()
+    blacks = [(e.frame, e.extra.get("end_frame", e.frame)) for e in events if e.kind == "black" and e.frame is not None]
+    for e in events:
+        fl = e.extra.get("flash") if e.kind == "cut" else None
+        if not fl or fl["frame"] in seen:
+            continue
+        if fl["black"] and any(a <= fl["frame"] <= b for a, b in blacks):
+            continue
+        seen.add(fl["frame"])
+        n = int(fl["n"])
+        what = ("frame preto" if n == 1 else f"{n} frames pretos") if fl["black"] else \
+            ("1 frame solto" if n == 1 else f"{n} frames soltos")
+        note = f"{what} entre dois cortes" + ("" if fl["black"] else " (sobra de outro plano)")
+        out.append(video.Event("flash", int(rate.seconds_of(fl["frame"]) * video.SAMPLE_FPS), 10000.0, (0, 0, 1, 1),
+                               frame=fl["frame"], show_frame=fl["frame"], value=n, note=note,
+                               extra={"frames": n, "black": bool(fl["black"])}))
+    return out
 
 
 def run_speech(path: Path, analysis: dict, out_dir: Path, settings: Settings, progress=None,

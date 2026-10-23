@@ -113,7 +113,7 @@ def comment_rows(rev: dict, style: str = "seconds") -> list[dict]:
             rows.append({
                 "cid": c.get("cid"), "vid": v["id"], "n": k + 1, "file": v["file"], "frame": int(c["frame"]),
                 "tc": timecode.fmt(r, int(c["frame"]), style), "seconds": r.seconds_of(int(c["frame"])),
-                "text": c.get("text", ""), "label": c.get("label", ""),
+                "text": c.get("text", ""), "label": c.get("label", ""), "tag": c.get("tag"),
                 "selected": bool(c.get("selected", True)), "with_frame": bool(c.get("with_frame", True)),
                 "missing": bool(v.get("missing", False)),
             })
@@ -358,6 +358,13 @@ def _clean_video(v) -> dict | None:
         cc = dict(c)
         cc.update({"frame": f, "text": text, "selected": bool(c.get("selected", True)),
                    "with_frame": bool(c.get("with_frame", True))})
+        if cc.get("tag") not in review.TAGS:
+            cc["tag"] = None
+        try:
+            cc["round"] = max(1, int(c.get("round") or 1))
+        except (TypeError, ValueError):
+            cc["round"] = 1
+        cc.pop("check", None) if not isinstance(c.get("check"), dict) else None
         cc.setdefault("cid", f"{f:07d}")
         cs.append(cc)
     out["comments"] = sorted(cs, key=lambda c: c["frame"])
@@ -368,6 +375,12 @@ def _clean_video(v) -> dict | None:
     out["dismissed"] = [str(x)[:200] for x in (v.get("dismissed") or []) if isinstance(x, (str, int))]
     ed = v.get("editor")
     out["editor"] = str(ed)[:80] if ed else None
+    if out.get("status") not in review.STATUSES:
+        out.pop("status", None)
+    try:
+        out["round"] = max(1, int(v.get("round") or 1))
+    except (TypeError, ValueError):
+        out["round"] = 1
     return out
 
 
@@ -453,6 +466,8 @@ def merge_reviews(local: dict, pkg: dict) -> dict:
         for k in pv.get("dismissed", []):
             if k not in dis:
                 dis.append(k)
+        if pv.get("status") and (not lv.get("status") or newer_pkg):     # situação: vale a mais recente
+            lv["status"] = pv["status"]
         if not lv.get("fps") and pv.get("fps"):
             lv["fps"] = pv["fps"]
         if not lv.get("report_entry") and pv.get("report_entry"):
@@ -585,9 +600,22 @@ def month_report(revs: list[dict], month: str | None = None) -> dict:
                 continue
             secs = video_seconds(v)
             name = v.get("editor") or NO_EDITOR
-            e = eds.setdefault(name, {"name": name, "videos": 0, "seconds": 0.0, "none": name == NO_EDITOR})
+            e = eds.setdefault(name, {"name": name, "videos": 0, "seconds": 0.0, "none": name == NO_EDITOR,
+                                      "approved_first": 0, "returned": 0, "tags": {}, "comments": 0})
             e["videos"] += 1
             e["seconds"] += secs
+            # situação e etiquetas (22/10): todas as rodadas do mesmo vídeo neste projeto
+            same = [x for x in r.get("videos", []) if treport.norm_name(x["file"]) == treport.norm_name(v["file"])]
+            rounds = max(int(x.get("round") or 1) for x in same)
+            if rounds > 1 or any(x.get("status") == "volta" for x in same):
+                e["returned"] += 1
+            elif v.get("status") == "aprovado":
+                e["approved_first"] += 1
+            for x in same:
+                for c in x.get("comments", []) or []:
+                    e["comments"] += 1
+                    t = c.get("tag") or "sem"
+                    e["tags"][t] = e["tags"].get(t, 0) + 1
             cursos[(r.get("curso") or "").strip() or NO_COURSE] += secs
             weeks[min(4, (int(ent[8:10]) - 1) // 7)] += secs
             projects.add(key)
@@ -622,6 +650,13 @@ def month_txt(rep: dict, reviews_read: int = 0) -> str:
     for e in rep["editors"]:
         lines.append(f"{e['name']:<{w}}  {e['videos']:>6}  {fmt_hms(e['seconds']):>14}  {e['share']:>4.0f}%")
     lines.append(f"{'Total':<{w}}  {rep['videos']:>6}  {fmt_hms(rep['edited_s']):>14}")
+    if any(e.get("comments") or e.get("approved_first") or e.get("returned") for e in rep["editors"]):
+        lines += ["", "Revisão por editor (aprovados de primeira · voltaram · correções por tipo):"]
+        for e in rep["editors"]:
+            tags = " · ".join(f"{review.TAGS.get(k, 'Sem etiqueta')} {n}" for k, n in
+                              sorted(e.get("tags", {}).items(), key=lambda x: -x[1]))
+            lines.append(f"  {e['name']}: {e.get('approved_first', 0)} aprovados de primeira · "
+                         f"{e.get('returned', 0)} voltaram" + (f" · {tags}" if tags else ""))
     lines += ["", f"Gravado no mês (bruto, mês da gravação): {fmt_hms(rep['recorded_s'])}",
               f"Aproveitamento (editado ÷ gravado): {fmt_pct(rep['usage_pct'])}", ""]
     if rep["courses"]:

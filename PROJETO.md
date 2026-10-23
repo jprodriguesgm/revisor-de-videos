@@ -943,6 +943,30 @@ Limites conhecidos da etapa 2:
 - MAC DO GITHUB (22/10): macos-14 cancelado 4 vezes seguidas ("capacity constraints" das máquinas Mac arm64;
   o job nem começa). Trocado para macos-15 (também M1/arm64; deployment target 11.0 e check_macos_min continuam
   valendo; o cache dos programas usa a mesma chave). Se o macos-15 também faltar, esperar e rodar de novo.
+- PEDIDOS DE 22/10 À NOITE (para a 1.0.2, junto com o Trello) — o JP escolheu da lista de ideias:
+  · ANALYSIS_VERSION 11 (todo o cache é refeito uma vez): avisos "black" (tela preta: quadro todo com média
+    < 22 e nenhum bloco > 30 na passada leve; refine_black acha os frames) e "flash" (no refino de cada corte,
+    find_flash: dois picos de mudança a até 3 frames, ou até 8 se o meio é preto, com tudo parado em volta —
+    transição do slide e fusão não contam); analyze.flash_events. Vinheta sem fundo (vinheta.black_under):
+    nas partes transparentes da vinheta (alpha < 0,05, ≥ 3% da tela) aparece preto (média < 24) em ≥ 3 frames
+    → "vinheta_inicial_sem_fundo"/"vinheta_final_sem_fundo". Aula de TV: fundo escuro não vira tela preta (a TV
+    é clara). Sintéticos: 41/41, 0 alarmes; tests/test_preto_solto.py. FALTA calibrar com as aulas reais e com
+    as vinhetas reais (ProRes 4444 com alpha) — as sintéticas não têm transparência.
+  · Zoom na linha do tempo (revisao.js WZ): roda = zoom no mouse (até ~4 s), Shift+roda = andar, − + Tudo; a
+    janela acompanha a posição só ao navegar.
+  · Situação do vídeo (v["status"] aprovado/volta, POST /api/review/status; abas ✓/↩; Resumo final) e etiqueta
+    do comentário (c["tag"] em review.TAGS; sugerida pelo tipo do aviso; chips embaixo do comentário). Relatório
+    do mês: por editor approved_first, returned (rodada > 1 ou "volta"), tags e comments; cartão "Revisão por
+    editor" e linhas no txt. Pacote: limpa status/tag/round; juntar → situação mais recente.
+  · CONFERIR CORREÇÕES (revisor/rounds.py): comentário novo guarda "afp" (volume de ±8 s, 0,1 s) e uma cópia do
+    frame (rev["snaps"], frames/snap_<id>_<frame>.jpg, /api/snap.jpg). Comentários da rodada anterior =
+    mesmo vídeo com "created" antes da data do arquivo atual, ou versão que saiu da pasta (outra duração).
+    map_time: correlação do volume (≥ 0,6), entre os quase iguais fica o mais perto do tempo antigo; senão
+    "aprox." (mesmo tempo). GET /api/checks, POST /api/check (ok/no; "no" cria "Não corrigido: …" com a mesma
+    etiqueta). Revisão: cartão "Rodada 2" + modo "check" (lista, quadro "Antes" no visor, ← → entre eles).
+    O round do vídeo sobe sozinho quando aparecem comentários de antes do arquivo. tests/test_conferir.py.
+  · Não escolhidos: pasta vigiada (a TI não aprovaria monitorar pastas), cor entre câmeras (só 1 câmera),
+    assistir tudo acelerado.
 - ONDE PARAMOS (22/10/2026, 15h30): VERSÃO OFICIAL 1.0.1 publicada (Mac + Windows, mesmo commit bd22430):
   analisar de novo, vectorscope colorido, Vulkan no Windows, sem PowerShell (antivírus), data do arquivo ×
   análise. Diagnóstico TUDO OK nos dois; Mac 40/41 (o +7 frames conhecido da imagem congelada). O JP pediu a

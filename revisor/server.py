@@ -24,7 +24,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import numpy as np
 
-from . import __version__, analyze, appdata, dialogs, export, frames, jobs, life, media, review, scopes, spell, summary
+from . import __version__, analyze, appdata, dialogs, export, frames, jobs, life, media, review, rounds, scopes, spell, summary
 from .timecode import parse_rate
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -655,6 +655,7 @@ class App:
             a2 = self.ready_analysis(x["id"])
             noted |= self._note_fps(x, a2)
             tabs.append({"n": k + 1, "id": x["id"], "file": x["file"], "missing": x.get("missing", False),
+                         "status": x.get("status"),
                          "ready": a2 is not None, "comments": review.comment_total(x),
                          "warnings": len(summary.warnings_of(a2, spell_on, x.get("dismissed"))) if a2 else 0})
         if noted:
@@ -664,7 +665,8 @@ class App:
             "review": {k: rev.get(k) for k in ("project", "professor", "curso", "disciplina", "sensitivity",
                                                "group_gap_s", "spell")},
             "n": n, "total": len(vids), "tabs": tabs,
-            "video": {k: v.get(k) for k in ("id", "file", "duration", "editor", "missing", "round")},
+            "video": {k: v.get(k) for k in ("id", "file", "duration", "editor", "missing", "round", "status")},
+            "tags": review.TAGS,
             "comments": sorted(v.get("comments", []), key=lambda c: c["frame"]),
             "general": (review.general_of(v) or {}).get("text", ""),
             "editors": appdata.active_editors(s),
@@ -677,6 +679,11 @@ class App:
             "scope": dict(zip(("targets", "skin"), scope_marks())),
         }
         a = self.ready_analysis(v["id"])
+        if a is not None:
+            prev = self._prev(v, a)
+            out["checks"] = {"total": len(prev), "done": sum(1 for _, c in prev if c.get("check")),
+                             "no": sum(1 for _, c in prev if c.get("check") == "no")}
+            out["video"]["round"] = v.get("round")
         if a is None:
             # o arquivo mudou depois da análise e nada está analisando ele agora: a tela oferece analisar
             st = out["job"]
@@ -728,6 +735,9 @@ class App:
         text = (body.get("text") or "").strip()
         if len(text) > 4000:
             raise ApiError("Comentário longo demais.")
+        tag = body.get("tag")
+        if tag is not None and tag != "" and tag not in review.TAGS:
+            raise ApiError("Etiqueta inválida.")
         cs = v.setdefault("comments", [])
         cur = next((c for c in cs if c["frame"] == frame), None)
         now = review.now_text()
@@ -736,15 +746,137 @@ class App:
                 if cur is not None:
                     cs.remove(cur)
             elif cur is None:
-                cs.append({"cid": uuid.uuid4().hex[:10], "frame": frame, "text": text,
-                           "source": (body.get("source") or "livre")[:60], "label": (body.get("label") or "")[:60],
-                           "selected": True, "with_frame": True, "created": now, "updated": now})
+                a = self.load_analysis(v["id"])
+                nc = {"cid": uuid.uuid4().hex[:10], "frame": frame, "text": text,
+                      "source": (body.get("source") or "livre")[:60], "label": (body.get("label") or "")[:60],
+                      "selected": True, "with_frame": True, "created": now, "updated": now,
+                      "tag": tag or None, "round": int(v.get("round") or 1)}
+                if a is not None:
+                    fp = rounds.fingerprint(a, parse_rate(a["fps"]).seconds_of(frame))
+                    if fp:
+                        nc["afp"] = fp
+                cs.append(nc)
+                self._snapshot(v["id"], frame, a)
             else:
                 cur["text"] = text
                 cur["updated"] = now
+                if tag is not None:
+                    cur["tag"] = tag or None
             cs.sort(key=lambda c: c["frame"])
             self.save_review()
         return {"ok": True, "comments": cs}
+
+    def _snapshot(self, vid: str, frame: int, a: dict | None) -> None:
+        """Cópia do frame comentado junto da revisão (para "Conferir correções" mostrar o ANTES depois que
+        o vídeo for trocado e o cache apagado). Em segundo plano: o comentário não espera."""
+        rev = self.review
+        path = self.video_path(vid) if a is not None else None
+        if rev is None or path is None:
+            return
+
+        def run():
+            try:
+                p = self.frames.jpeg(vid, path, parse_rate(a["fps"]), max(0, min(frame, int(a["frames"]) - 1)),
+                                     "full", int(a["width"]))
+                if p is None:
+                    return
+                d = self.review_frames_dir(rev)
+                d.mkdir(parents=True, exist_ok=True)
+                name = f"snap_{vid}_{frame:07d}.jpg"
+                shutil.copy2(p, d / name)
+                with self.lock:
+                    rev.setdefault("snaps", {})[f"{vid}:{frame}"] = name
+                    review.save(self.reviews_root(), rev)
+            except Exception:
+                pass
+        threading.Thread(target=run, name="snap", daemon=True).start()
+
+    def snap_jpeg(self, vid: str, f: int) -> bytes | None:
+        rev = self._need_review()
+        name = (rev.get("snaps") or {}).get(f"{vid}:{int(f)}")
+        if not name:
+            return None
+        p = self.review_frames_dir(rev) / Path(name).name
+        return p.read_bytes() if p.is_file() else None
+
+    def _prev(self, v: dict, a: dict | None) -> list:
+        prev = rounds.previous_comments(self.review, v, a)
+        mx = max((int(c.get("round") or 1) for x, c in prev if x is v), default=0)
+        if mx and int(v.get("round") or 1) <= mx:       # o arquivo foi trocado: rodada seguinte
+            v["round"] = mx + 1
+            self.save_review()
+        return prev
+
+    def checks_view(self, n: int) -> dict:
+        """Comentários da rodada anterior deste vídeo, com o ponto equivalente no vídeo novo."""
+        rev = self._need_review()
+        vids = rev["videos"]
+        v = vids[max(1, min(len(vids), int(n))) - 1]
+        a = self.ready_analysis(v["id"])
+        if a is None:
+            return {"items": []}
+        rate = parse_rate(a["fps"])
+        style = self.settings.get("time_format", "seconds")
+        items = []
+        for src, c in self._prev(v, a):
+            r0 = export.rate_of(src)
+            old_t = r0.seconds_of(int(c["frame"]))
+            hit = rounds.map_time(c.get("afp"), a)
+            t = hit[0] if hit else min(old_t, float(a["duration"]))
+            f = max(0, min(int(a["frames"]) - 1, rate.frame_at(t)))
+            items.append({"src": src["id"], "cid": c.get("cid"), "frame_old": int(c["frame"]),
+                          "tc_old": export.timecode.fmt(r0, int(c["frame"]), style), "text": c.get("text", ""),
+                          "tag": c.get("tag"), "round": int(c.get("round") or src.get("round") or 1),
+                          "check": c.get("check"), "frame": f, "tc": export.timecode.fmt(rate, f, style),
+                          "approx": hit is None, "corr": round(hit[1], 2) if hit else None,
+                          "snap": bool((rev.get("snaps") or {}).get(f"{src['id']}:{int(c['frame'])}"))})
+        return {"items": items, "round": int(v.get("round") or 1)}
+
+    def set_check(self, body: dict) -> dict:
+        """Corrigido / não corrigido. "Não corrigido" vira comentário no vídeo novo (vai para o Resumo final e o SRT)."""
+        rev = self._need_review()
+        src = self.video_entry(str(body.get("src") or ""))
+        cid = str(body.get("cid") or "")
+        c = next((x for x in src.get("comments", []) if x.get("cid") == cid), None)
+        if c is None:
+            raise ApiError("Comentário não encontrado.", 404)
+        st = body.get("check") or None
+        if st not in (None, "ok", "no"):
+            raise ApiError("Situação inválida.")
+        out = {"ok": True}
+        with self.lock:
+            if st:
+                c["check"] = st
+            else:
+                c.pop("check", None)
+            self.save_review()
+        if st == "no":
+            v = self.video_entry(str(body.get("id") or ""))
+            try:
+                f = int(body.get("frame"))
+            except (TypeError, ValueError):
+                raise ApiError("Frame inválido.")
+            if not any(x["frame"] == f for x in v.get("comments", [])):
+                r = self.set_comment({"id": v["id"], "frame": f, "text": f"Não corrigido: {c.get('text', '')}",
+                                      "source": "conferir", "label": "rodada anterior", "tag": c.get("tag") or ""})
+                out["comments"] = r["comments"]
+        return out
+
+    def set_status(self, body: dict) -> dict:
+        """Situação do vídeo: aprovado / volta para o editor / (vazio = ainda não decidido)."""
+        v = self._rev_video(body)
+        st = body.get("status") or None
+        if st is not None and st not in review.STATUSES:
+            raise ApiError("Situação inválida.")
+        with self.lock:
+            if st:
+                v["status"] = st
+                v["status_round"] = int(v.get("round") or 1)
+            else:
+                v.pop("status", None)
+                v.pop("status_round", None)
+            self.save_review()
+        return {"ok": True, "status": st}
 
     def set_general(self, body: dict) -> dict:
         """Comentário geral do vídeo (sem tempo). Texto vazio apaga."""
@@ -984,15 +1116,19 @@ class App:
                 p = None
             if p is not None:
                 return p.read_bytes(), (size != "full" or p.parent.name == "full")
-        name = (rev.get("pkg_frames") or {}).get(f"{v['id']}:{int(f)}")
-        if name:
-            p = self.review_frames_dir(rev) / Path(name).name
-            if p.is_file():
-                return p.read_bytes(), True
+        for store in ("pkg_frames", "snaps"):       # imagem do pacote ou a cópia feita ao comentar
+            name = (rev.get(store) or {}).get(f"{v['id']}:{int(f)}")
+            if name:
+                p = self.review_frames_dir(rev) / Path(name).name
+                if p.is_file():
+                    return p.read_bytes(), True
         return None
 
     def _frame_file(self, v: dict, f: int) -> Path | None:
         """Para o pacote: JPEG cheio do frame (vídeo ou cache), ou a imagem que veio de outro pacote."""
+        snap = (self.review.get("snaps") or {}).get(f"{v['id']}:{int(f)}")
+        if snap and (self.review_frames_dir(self.review) / Path(snap).name).is_file():
+            return self.review_frames_dir(self.review) / Path(snap).name   # a imagem de quando comentou
         a = self.load_analysis(v["id"])
         if a is not None:
             try:
@@ -1027,7 +1163,7 @@ class App:
             "review": {k: rev.get(k) for k in ("project", "professor", "curso", "disciplina", "entrega",
                                                "entrega_locked", "report", "updated")},
             "videos": [{"n": k + 1, "id": v["id"], "file": v["file"], "missing": v.get("missing", False),
-                        "editor": v.get("editor"), "comments": review.comment_total(v)}
+                        "editor": v.get("editor"), "comments": review.comment_total(v), "status": v.get("status")}
                        for k, v in enumerate(rev["videos"])],
             "rows": rows,
             "hours": export.editor_hours(rev),
@@ -1685,6 +1821,19 @@ class Handler(BaseHTTPRequestHandler):
             p = APP.clip_file(q)
             return self._send_file(p, "video/webm" if p.suffix == ".webm" else "video/mp4")
         # ---- etapa 5
+        if ep == "checks":
+            return self._json(APP.checks_view(int(q.get("n", "1") or 1)))
+        if ep == "snap.jpg":
+            vid = q.get("id", "")
+            if not vid.isalnum():
+                raise ApiError("Vídeo inválido.")
+            try:
+                data = APP.snap_jpeg(vid, int(q.get("f", "0")))
+            except ValueError:
+                raise ApiError("Frame inválido.")
+            if data is None:
+                raise ApiError("Sem a imagem da versão anterior.", 404)
+            return self._send(200, data, "image/jpeg", cache=True)
         if ep == "cframe.jpg":
             vid = q.get("id", "")
             if not vid.isalnum():
@@ -1799,6 +1948,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(APP.adjust(body))
         if ep == "reanalyze":
             return self._json(APP.reanalyze(body))
+        if ep == "review/status":
+            return self._json(APP.set_status(body))
+        if ep == "check":
+            return self._json(APP.set_check(body))
         if ep == "pick":
             return self._json(APP.pick(body))
         # ---- etapa 5

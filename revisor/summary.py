@@ -13,7 +13,7 @@ from .timecode import parse_rate
 
 # eventos da imagem/texto/fala que são avisos (precisam de atenção)
 WARN_EVENT_KINDS = {"slide_transition", "freeze", "spelling", "name_tag", "speech_phrase",
-                    "speech_repeat", "color_jump", "bright_jump"}
+                    "speech_repeat", "color_jump", "bright_jump", "black", "flash"}
 FRAME_KINDS = {"text_in", "text_out", "change"}
 # eventos de áudio que só aparecem como marca na forma de onda (não são aviso):
 # "corte no meio da fala" deu 6 alarmes nas 10 aulas aprovadas e o JP ouviu os 6
@@ -29,6 +29,7 @@ EVENT_LABEL = {
     "slide_transition": "transição do slide", "freeze": "imagem congelada", "spelling": "ortografia",
     "name_tag": "tarja de nome", "speech_phrase": "frase de erro na fala", "speech_repeat": "take repetido",
     "color_jump": "cor muda de repente", "bright_jump": "brilho muda de repente",
+    "black": "tela preta", "flash": "frame solto entre cortes",
 }
 FRAME_LABEL = {"text_in": "texto entrou", "text_out": "texto saiu", "change": "mudança na tela"}
 
@@ -90,7 +91,7 @@ def warnings_of(a: dict, spell: bool = True, dismissed=None) -> list[dict]:
                         "note": fix_note(e.get("note", "")), "region": e.get("region"),
                         "extra": {k: v for k, v in extra.items() if k not in ("transition",)},
                         "source": "imagem" if e["kind"] in ("slide_transition", "freeze", "color_jump",
-                                                            "bright_jump") else
+                                                            "bright_jump", "black", "flash") else
                         "texto" if e["kind"] in ("spelling", "name_tag") else "fala"})
     au = a.get("audio") or {}
     for e in au.get("events", []):

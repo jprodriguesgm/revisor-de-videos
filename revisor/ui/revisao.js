@@ -108,6 +108,8 @@ async function screenRevisao(root, arg) {
       const b = h("button", { class: "rv-tab" + (on ? " on" : "") + (t.missing ? " missing" : ""), role: "tab",
         "aria-selected": on ? "true" : "false", title: t.file,
         onclick: () => { if (!on) location.hash = `#/revisao/${t.n}`; } },
+        t.status ? h("span", { class: "st " + t.status, title: t.status === "aprovado" ? "Aprovado" : "Volta para o editor",
+          "aria-label": t.status === "aprovado" ? "aprovado" : "volta para o editor", text: t.status === "aprovado" ? "✓" : "↩" }) : null,
         h("span", { class: "nm", text: vlabel(t) }),
         !t.ready ? h("span", { class: "faint", text: "…" }) :
           t.warnings ? h("span", { class: "badge", "aria-label": plural(t.warnings, "aviso", "avisos"), text: String(t.warnings) }) : null);
@@ -241,6 +243,7 @@ async function screenRevisao(root, arg) {
   }
 
   const M = V.meta;
+  if (RV.mode === "check" && !(V.checks && V.checks.total)) RV.mode = null;   // outro vídeo sem rodada anterior
   const W = M.width, H = M.height;
   let items = V.items;
   const itemByFrame = () => new Map(items.map((it) => [it.frame, it]));
@@ -275,7 +278,10 @@ async function screenRevisao(root, arg) {
   const cross = h("div", { class: "vw-cross hidden" });
   const loupe = h("div", { class: "vw-loupe hidden" }, h("i"), h("span", { text: "área 9 × 9 px" }));
   const clipBox = h("div", { class: "vw-clip hidden" });
-  const vw = h("div", { class: "vw", tabindex: "-1" }, layer, hudTL, hudTR, stepsBox, mini, zoomTxt, msgBox, cross, loupe, clipBox);
+  const beforeImg = h("img", { alt: "Frame da rodada anterior" });
+  const beforeLbl = h("span", { class: "mono" });
+  const beforeBox = h("div", { class: "vw-before hidden", title: "Como estava na rodada anterior" }, beforeImg, beforeLbl);
+  const vw = h("div", { class: "vw", tabindex: "-1" }, layer, hudTL, hudTR, stepsBox, mini, zoomTxt, msgBox, cross, loupe, clipBox, beforeBox);
   const k = (key, label, fn, title, opt) => h("button", { class: "tool", onclick: fn, title: title || label,
     "aria-label": title || label }, h("kbd", { text: key }), h("span", { class: "l" + (opt ? " opt" : ""), text: label }));
   const tGraphs = k("G", "Gráficos", () => setMode(RV.mode === "graphs" ? null : "graphs"));
@@ -554,6 +560,7 @@ async function screenRevisao(root, arg) {
     show();
   }
   function go(d) {
+    if (RV.mode === "check" && CK.items.length) { ckGo(CK.sel === null ? 0 : CK.sel + d); return; }
     if (!items.length) return;
     const it = curItem();
     const onItem = it && (it.frame === cur.frame || (it.steps && cur.step !== null));
@@ -580,13 +587,34 @@ async function screenRevisao(root, arg) {
   }
 
   // ------------------------------------------------------------------ painel da direita
+  // ---- etiqueta do comentário (pedido do JP, 22/10): sugerida pelo tipo do aviso; o JP troca com um clique
+  const TAGS = V.tags || {};
+  function suggestTag(it) {
+    if (!it) return null;
+    const k = it.kind || "", src = it.source || "";
+    if (k === "spelling") return "texto";
+    if (k === "name_tag") return "tarja";
+    if (k === "slide_transition" || k === "slide") return "slide";
+    if (src === "vinheta" || k.startsWith("vinheta")) return "vinheta";
+    if (src === "áudio" || src === "fala") return "audio";
+    if (k === "color_jump" || k === "bright_jump") return "cor";
+    if (["flash", "black", "freeze", "cut"].includes(k)) return "corte";
+    if (["text_in", "text_out", "list", "change"].includes(k)) return "texto";
+    return null;
+  }
+  let pendingTag = null;              // escolhida antes de escrever o comentário
   async function saveComment(frame, text) {
     try {
       const it = curItem();
-      const r = await api("comment", { id: vid, frame, text, source: it && it.frame === frame ? it.key : "livre",
-        label: it && it.frame === frame ? it.label : "" });
+      const c0 = commentAt(frame);
+      const onIt = it && it.frame === frame;
+      const tag = c0 ? undefined : (pendingTag || (onIt ? suggestTag(it) : null));
+      const r = await api("comment", { id: vid, frame, text, source: onIt ? it.key : "livre",
+        label: onIt ? it.label : "", ...(tag !== undefined ? { tag } : {}) });
+      pendingTag = null;
       V.comments = r.comments;
       if (savedEl && cmtFrame === frame) savedEl.textContent = text.trim() ? "Salvo" : "";
+      if (cmtFrame === frame) drawTagChips();
       drawCommentList();
       markStrip();
       drawWave();
@@ -693,6 +721,106 @@ async function screenRevisao(root, arg) {
       toast(`“${it.extra.word}” entrou na sua lista de palavras (ortografia refeita em ${plural(r.videos, "vídeo", "vídeos")}).`);
     } catch (e) { toast(e.message, true); }
   }
+  // ---- Conferir correções da rodada anterior (pedido do JP, 22/10)
+  const CK = { items: [], sel: null, loaded: false };
+  const TAGN = (k) => (TAGS && TAGS[k]) || "";
+  async function loadChecks() {
+    try { const r = await api("checks?n=" + V.n); CK.items = r.items || []; CK.round = r.round; CK.loaded = true; }
+    catch (e) { toast(e.message, true); CK.items = []; }
+  }
+  function ckGo(i) {
+    if (!CK.items.length) return;
+    CK.sel = Math.max(0, Math.min(CK.items.length - 1, i));
+    const it = CK.items[CK.sel];
+    showBefore(it);
+    goFrame(it.frame);
+  }
+  function showBefore(it) {
+    if (!it || !it.snap) { beforeBox.classList.add("hidden"); return; }
+    beforeImg.src = `/api/snap.jpg?id=${it.src}&f=${it.frame_old}`;
+    beforeLbl.textContent = `Antes · rodada ${it.round} · ${it.tc_old}`;
+    beforeBox.classList.remove("hidden");
+  }
+  async function setCheck(it, st) {
+    try {
+      const r = await api("check", { src: it.src, cid: it.cid, check: it.check === st ? null : st, id: vid, frame: it.frame });
+      it.check = it.check === st ? null : st;
+      if (r.comments) V.comments = r.comments;
+      V.checks = { total: CK.items.length, done: CK.items.filter((x) => x.check).length, no: CK.items.filter((x) => x.check === "no").length };
+      if (st === "no" && it.check === "no") toast("Virou comentário neste vídeo: “Não corrigido: …”. Vai para o Resumo final.");
+      drawCheck(); markStrip(); drawWave();
+      if (it.check && CK.sel !== null && CK.sel < CK.items.length - 1 && CK.items[CK.sel] === it) ckGo(CK.sel + 1);   // vai para a próxima
+    } catch (e) { toast(e.message, true); }
+  }
+  function drawCheck() {
+    side.className = "rv-side rv-check";
+    if (!CK.loaded) { fill(side, h("p", { class: "muted", text: "Carregando…" })); loadChecks().then(() => { drawCheck(); if (CK.items.length && CK.sel === null) ckGo(0); }); return; }
+    const done = CK.items.filter((x) => x.check).length;
+    fill(side,
+      h("div", { class: "rv-head" }, h("span", { class: "tt", text: "Conferir correções" }),
+        h("button", { class: "btn ghost small", type: "button", onclick: () => setMode(null), text: "Voltar · Esc" })),
+      h("p", { class: "muted", style: { margin: 0, fontSize: "13px" },
+        text: `${plural(CK.items.length, "comentário", "comentários")} da rodada anterior · ${done} conferidos. ` +
+          "O ponto no vídeo novo é achado pelo áudio (se o editor cortou algo antes, o tempo muda)." }),
+      h("div", { class: "ck-list" }, CK.items.map((it, j) => h("div", { class: "ck-row" + (j === CK.sel ? " on" : "") + (it.check ? " " + it.check : "") },
+        h("button", { class: "ck-go", type: "button", onclick: () => ckGo(j), title: "Ir para este ponto no vídeo novo" },
+          it.snap ? h("img", { src: `/api/snap.jpg?id=${it.src}&f=${it.frame_old}`, alt: "", loading: "lazy" })
+            : h("span", { class: "ck-noimg", text: "sem imagem antiga" }),
+          h("span", { class: "ck-t" },
+            h("span", { class: "mono faint", text: `${it.tc_old} → ${it.tc}${it.approx ? " (aprox.)" : ""}` }),
+            h("span", {}, it.tag ? h("span", { class: "f-tag", text: TAGN(it.tag) }) : null, it.text))),
+        h("div", { class: "ck-b" },
+          h("button", { class: "st-b ok" + (it.check === "ok" ? " on" : ""), type: "button", onclick: () => setCheck(it, "ok"), text: "✓ Corrigido" }),
+          h("button", { class: "st-b back" + (it.check === "no" ? " on" : ""), type: "button", onclick: () => setCheck(it, "no"), text: "✗ Não corrigido" }))))),
+      CK.items.length && done === CK.items.length
+        ? h("div", { class: "notice info" }, icon("info"), h("span", { text: CK.items.some((x) => x.check === "no")
+            ? "Tudo conferido. Os “não corrigidos” viraram comentários deste vídeo." : "Tudo corrigido. Pode marcar o vídeo como aprovado." }))
+        : null);
+  }
+  // aviso no painel de comentário quando há correções da rodada anterior
+  function checksCard() {
+    const c = V.checks;
+    if (!c || !c.total) return null;
+    return h("div", { class: "notice info ck-card" }, icon("info"),
+      h("span", { style: { flex: 1 }, text: `Rodada ${V.video.round || 2}: ${plural(c.total, "comentário", "comentários")} da rodada anterior` +
+        (c.done ? ` · ${c.done} conferidos` : "") }),
+      h("button", { class: "btn small", type: "button", onclick: () => setMode("check"), text: "Conferir correções" }));
+  }
+
+  // chips de etiqueta embaixo do comentário: a do comentário salvo, ou a sugerida (tracejada) se ainda não há texto
+  let tagRow = null;
+  function drawTagChips() {
+    if (!tagRow) return;
+    const c = commentAt(cmtFrame);
+    const it = curItem();
+    const sug = !c && it && it.frame === cmtFrame ? suggestTag(it) : null;
+    const curTag = c ? c.tag : (pendingTag || sug);
+    tagRow.replaceChildren(...Object.entries(TAGS).map(([k, lbl]) => h("button", {
+      class: "tg" + (curTag === k ? (c || pendingTag ? " on" : " sug") : ""), type: "button", "aria-pressed": curTag === k ? "true" : "false",
+      title: c ? `Marcar este comentário como “${lbl}”` : `O comentário vai ser marcado como “${lbl}”`,
+      onclick: async () => {
+        const cc = commentAt(cmtFrame);
+        if (!cc) { pendingTag = curTag === k && pendingTag ? null : k; drawTagChips(); return; }
+        try {
+          const r = await api("comment", { id: vid, frame: cmtFrame, text: cmtEl ? cmtEl.value : cc.text, tag: cc.tag === k ? "" : k });
+          V.comments = r.comments; drawTagChips(); drawCommentList();
+        } catch (e) { toast(e.message, true); }
+      }, text: lbl })));
+  }
+  // situação do vídeo: aprovado / volta para o editor (aparece nas abas e no Resumo final)
+  function statusRow() {
+    const st = V.video.status || null;
+    const set = async (v) => {
+      try { await api("review/status", { id: vid, status: st === v ? null : v }); V.video.status = st === v ? null : v;
+        const t = V.tabs.find((x) => x.n === V.n); if (t) t.status = V.video.status; drawTabs(); drawSide(); }
+      catch (e) { toast(e.message, true); }
+    };
+    return h("div", { class: "rv-status" }, h("span", { class: "muted", text: "Este vídeo:" }),
+      h("button", { class: "st-b ok" + (st === "aprovado" ? " on" : ""), type: "button", "aria-pressed": st === "aprovado" ? "true" : "false",
+        onclick: () => set("aprovado"), text: "✓ Aprovado" }),
+      h("button", { class: "st-b back" + (st === "volta" ? " on" : ""), type: "button", "aria-pressed": st === "volta" ? "true" : "false",
+        onclick: () => set("volta"), text: "↩ Volta para o editor" }));
+  }
   function drawComment() {
     side.className = "rv-side";
     const it = curItem();
@@ -701,6 +829,9 @@ async function screenRevisao(root, arg) {
     cmtFrame = cur.frame;
     cmtEl = h("textarea", { id: "cmt", class: "rv-ta", placeholder: "O que o editor precisa corrigir neste frame?", value: c ? c.text : "" });
     savedEl = h("span", { class: "rv-saved", "aria-live": "polite", text: c ? "Salvo" : "" });
+    pendingTag = null;
+    tagRow = h("div", { class: "rv-tags", role: "group", "aria-label": "Tipo da correção" });
+    drawTagChips();
     cmtEl.addEventListener("input", () => {
       savedEl.textContent = "";
       clearTimeout(cmtTimer);
@@ -711,11 +842,13 @@ async function screenRevisao(root, arg) {
     const clipBtn = clipOpen() ? h("button", { class: "btn ghost-blue", onclick: () => closeClip(), text: "Voltar ao frame · Esc" })
       : h("button", { class: "btn ghost", onclick: () => openClip() }, rvIcon("play"), `Ver momento (${secTxt(RV.clipHalf)} s antes e depois)`);
     fill(side, 
+      checksCard(),
       h("div", { class: "rv-head" }, h("span", { class: "tt", text: "Comentário do frame" }),
         h("span", { class: "mono faint", text: `${nn} · ${tcOf(cur.frame)}` })),
       onItem && it.warn ? warnCard(it) : null,
+      statusRow(),
       h("label", { for: "cmt", class: "sr", text: "Comentário" }), cmtEl,
-      h("div", { class: "rv-saved-row" }, savedEl),
+      h("div", { class: "rv-saved-row" }, tagRow, savedEl),
       h("button", { class: "btn primary", onclick: () => copyFrame() }, rvIcon("copy"), "Copiar frame + comentário"),
       h("button", { class: "btn", onclick: () => copyTrello(), title: "Uma imagem só, com o que está na tela (com zoom: a parte ampliada) e o comentário escrito embaixo (T)" },
         rvIcon("copy"), "Copiar para o Trello"),
@@ -885,12 +1018,15 @@ async function screenRevisao(root, arg) {
   function drawSide() {
     if (RV.mode === "graphs") drawGraphs();
     else if (RV.mode === "pick") drawPick();
+    else if (RV.mode === "check") drawCheck();
     else drawComment();
+    if (RV.mode !== "check") beforeBox.classList.add("hidden");
     tGraphs.classList.toggle("on", RV.mode === "graphs");
     tPick.classList.toggle("on", RV.mode === "pick");
     tClip.classList.toggle("on", clipOpen());
     vw.classList.toggle("picking", RV.mode === "pick");
-    hint.textContent = RV.mode === "graphs" ? "Os gráficos acompanham o frame: com ← → eles se atualizam. G ou Esc fecha." :
+    hint.textContent = RV.mode === "check" ? "← → de correção em correção · o quadro “Antes” mostra como estava · Esc volta" :
+      RV.mode === "graphs" ? "Os gráficos acompanham o frame: com ← → eles se atualizam. G ou Esc fecha." :
       RV.mode === "pick" ? "Mova o mouse sobre o vídeo. Clique para fixar o ponto (até 4) · arraste para mover com zoom · P ou Esc sai." :
       "↑ ↓ de corte em corte · Shift + ← → anda 1 frame · roda do mouse ou pinça: zoom · Z: caber / 100% · T copiar para o Trello · N próxima aula";
     requestAnimationFrame(layoutViewer);
@@ -1236,6 +1372,59 @@ async function screenRevisao(root, arg) {
     vinBlock("Vídeo → vinheta", V.vinheta.frames_out)), waveBox);
 
   const audioWarns = () => items.filter((it) => it.source === "áudio" && !it.dismissed);
+  // ---- zoom na linha do tempo (pedido do JP, 22/10): em vídeo longo era difícil clicar num ponto exato.
+  // Roda do mouse sobre a linha: zoom em volta do mouse; Shift + roda (ou arrastar de lado no trackpad):
+  // anda para os lados; botões − + e "Tudo". A janela acompanha a posição atual ao navegar.
+  const WZ = { z: 1, t0: 0, last: null };
+  const WZ_MAX = () => Math.max(1, Math.min(200, (M.duration || 1) / 4));     // até ~4 s na largura toda
+  const wSpan = () => (M.duration || 1) / WZ.z;
+  function wClamp() {
+    WZ.z = Math.min(Math.max(WZ.z, 1), WZ_MAX());
+    WZ.t0 = Math.min(Math.max(WZ.t0, 0), Math.max(0, (M.duration || 1) - wSpan()));
+  }
+  const wX = (t, cw) => ((t - WZ.t0) / wSpan()) * cw;
+  const wT = (x, cw) => WZ.t0 + (x / cw) * wSpan();
+  function wZoomAt(x, cw, factor) {
+    const t = wT(x, cw);
+    WZ.z *= factor;
+    wClamp();
+    WZ.t0 = t - (x / cw) * wSpan();
+    wClamp();
+    drawWaveHead(); drawWave(); drawZoomBar();
+  }
+  function wFollow() {           // ao navegar (← → ↑ ↓, clique), a posição atual fica dentro da janela
+    if (WZ.last === cur.frame) return;          // zoom e andar para os lados não mexem na posição
+    WZ.last = cur.frame;
+    if (WZ.z <= 1) return;
+    const t = secondsOf(R, cur.frame), span = wSpan();
+    if (t < WZ.t0 + span * 0.05 || t > WZ.t0 + span * 0.95) { WZ.t0 = t - span / 2; wClamp(); drawWaveHead(); drawZoomBar(); }
+  }
+  const zoomLbl = h("span", { class: "wz-l mono" });
+  const zoomBar = h("div", { class: "wz", "aria-label": "Zoom da linha do tempo" },
+    h("button", { class: "wz-b", type: "button", title: "Menos zoom na linha do tempo", "aria-label": "Menos zoom",
+      onclick: () => wZoomAt((canvas.clientWidth || 800) / 2, canvas.clientWidth || 800, 1 / 2), text: "−" }),
+    zoomLbl,
+    h("button", { class: "wz-b", type: "button", title: "Mais zoom na linha do tempo (ou roda do mouse sobre ela)", "aria-label": "Mais zoom",
+      onclick: () => { const cw = canvas.clientWidth || 800; WZ.t0 = Math.max(0, secondsOf(R, cur.frame) - wSpan() / 4); wZoomAt(wX(secondsOf(R, cur.frame), cw), cw, 2); }, text: "+" }),
+    h("button", { class: "wz-b all", type: "button", title: "Ver o vídeo inteiro na linha do tempo",
+      onclick: () => { WZ.z = 1; WZ.t0 = 0; drawWaveHead(); drawWave(); drawZoomBar(); }, text: "Tudo" }));
+  function drawZoomBar() {
+    zoomLbl.textContent = WZ.z <= 1 ? "vídeo inteiro" : `${tcOf(frameAt(R, WZ.t0))} – ${tcOf(frameAt(R, WZ.t0 + wSpan()))}`;
+    zoomBar.classList.toggle("on", WZ.z > 1);
+  }
+  waveBox.appendChild(zoomBar);
+  canvas.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const r = canvas.getBoundingClientRect(), cw = r.width;
+    const horiz = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : (e.shiftKey ? e.deltaY : 0);
+    if (horiz) {                                   // andar para os lados
+      if (WZ.z <= 1) return;
+      WZ.t0 += (horiz / cw) * wSpan();
+      wClamp(); drawWaveHead(); drawWave(); drawZoomBar();
+      return;
+    }
+    wZoomAt(e.clientX - r.left, cw, Math.exp(-e.deltaY * (e.deltaMode === 1 ? 0.05 : 0.0025)));
+  }, { passive: false });
   function drawWaveHead() {
     const A = V.audio;
     const nSl = (V.slides || []).length;
@@ -1244,10 +1433,11 @@ async function screenRevisao(root, arg) {
     let lastX = -1e9;
     const wpx = canvas.clientWidth || 800;
     for (const it of audioWarns()) {
-      const x = (secondsOf(R, it.frame) / M.duration) * wpx;
-      if (x - lastX < 150 || x < (nSl ? 480 : 330)) continue;
+      const x = wX(secondsOf(R, it.frame), wpx);
+      if (x < 0 || x > wpx) continue;
+      if (x - lastX < 150 || x < (nSl ? 480 : 330) || x > wpx - 470) continue;     // à direita ficam os botões de zoom
       lastX = x;
-      waveHead.appendChild(h("span", { class: "wl", style: x > wpx - 160 ? { right: "0" } : { left: `${x}px` }, text: `${it.label} ${tcOf(it.frame)}` }));
+      waveHead.appendChild(h("span", { class: "wl", style: { left: `${x}px` }, text: `${it.label} ${tcOf(it.frame)}` }));
     }
   }
   function drawWave() {
@@ -1260,12 +1450,13 @@ async function screenRevisao(root, arg) {
     ctx.setTransform(d, 0, 0, d, 0, 0);
     ctx.clearRect(0, 0, cw, ch);
     const D = M.duration || 1;
-    const xOf = (t) => (t / D) * cw;
+    wFollow();
+    const xOf = (t) => wX(t, cw);
     const c0 = M.content ? secondsOf(R, M.content.first_frame) : 0, c1 = M.content ? secondsOf(R, M.content.end_frame) : D;
     // fora do conteúdo (vinhetas)
     ctx.fillStyle = "#202020";
-    ctx.fillRect(0, 0, xOf(c0), ch);
-    ctx.fillRect(xOf(c1), 0, cw - xOf(c1), ch);
+    if (xOf(c0) > 0) ctx.fillRect(0, 0, Math.min(cw, xOf(c0)), ch);
+    if (xOf(c1) < cw) ctx.fillRect(Math.max(0, xOf(c1)), 0, cw - Math.max(0, xOf(c1)), ch);
     // slide em tela cheia: faixa roxa clara atrás da onda + linha roxa embaixo
     (V.slides || []).forEach(([f0, f1]) => {
       const x0 = xOf(secondsOf(R, f0)), x1 = Math.max(xOf(secondsOf(R, f1)), x0 + 2);
@@ -1278,9 +1469,9 @@ async function screenRevisao(root, arg) {
     if (A && A.env && A.env.length) {
       const bw = 3, n = Math.floor(cw / bw), step = A.step || 0.1;
       for (let b = 0; b < n; b++) {
-        const t0 = (b / n) * D, t1 = ((b + 1) / n) * D;
+        const t0 = wT(b * bw, cw), t1 = wT((b + 1) * bw, cw);
         let mx = -120;
-        for (let q = Math.floor(t0 / step); q <= Math.min(A.env.length - 1, Math.floor(t1 / step)); q++) mx = Math.max(mx, A.env[q]);
+        for (let q = Math.max(0, Math.floor(t0 / step)); q <= Math.min(A.env.length - 1, Math.floor(t1 / step)); q++) mx = Math.max(mx, A.env[q]);
         const hh = Math.max(1.5, Math.min(1, (mx + 60) / 60) * (ch - 10));
         const warn = ranges.some(([a, z]) => t1 >= a && t0 <= z);
         ctx.fillStyle = warn ? "#e8a33d" : (t1 < c0 || t0 > c1) ? "#4a4a4a" : "#6d6d6d";
@@ -1306,7 +1497,7 @@ async function screenRevisao(root, arg) {
     ctx.fillRect(Math.round(xOf(secondsOf(R, cur.frame))) - 1, 0, 2, ch);
   }
   function nearestAt(t) {
-    const D = M.duration || 1, tol = (D / (canvas.clientWidth || 800)) * 6;
+    const tol = (wSpan() / (canvas.clientWidth || 800)) * 6;
     const cands = [];
     items.forEach((it) => cands.push([Math.abs(secondsOf(R, it.frame) - t), `${it.label}${it.dismissed ? " (ignorado)" : ""}`]));
     V.cuts.forEach((c) => cands.push([Math.abs(secondsOf(R, c.frame) - t), "corte"]));
@@ -1319,7 +1510,7 @@ async function screenRevisao(root, arg) {
   }
   canvas.addEventListener("mousemove", (e) => {
     const r = canvas.getBoundingClientRect();
-    const t = ((e.clientX - r.left) / r.width) * M.duration;
+    const t = wT(e.clientX - r.left, r.width);
     const near = nearestAt(t);
     tip.textContent = `${tcOf(frameAt(R, t))}${near.length ? " · " + near.slice(0, 2).join(" · ") : ""}`;
     tip.style.left = `${Math.min(e.clientX - r.left, r.width - 220)}px`;
@@ -1328,8 +1519,8 @@ async function screenRevisao(root, arg) {
   canvas.addEventListener("mouseleave", () => tip.classList.add("hidden"));
   canvas.addEventListener("click", (e) => {
     const r = canvas.getBoundingClientRect();
-    const t = ((e.clientX - r.left) / r.width) * M.duration;
-    const snap = Math.max(3, Math.round((M.duration / r.width) * 4 * R.fps));    // ~4 px
+    const t = wT(e.clientX - r.left, r.width);
+    const snap = Math.max(1, Math.round((wSpan() / r.width) * 4 * R.fps));       // ~4 px (com zoom, fica exato)
     goFrame(frameAt(R, t), snap);
   });
 
@@ -1416,5 +1607,5 @@ async function screenRevisao(root, arg) {
   // ------------------------------------------------------------------ começar
   drawStrip();
   show();
-  requestAnimationFrame(() => { layoutViewer(); drawWaveHead(); drawWave(); });
+  requestAnimationFrame(() => { layoutViewer(); drawWaveHead(); drawWave(); drawZoomBar(); });
 }

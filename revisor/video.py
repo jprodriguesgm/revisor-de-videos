@@ -38,6 +38,13 @@ FREEZE_GLOBAL = 0.05   # diferença média do quadro todo abaixo disso = frames 
 FREEZE_ZONE = 0.3      # e na zona do professor também
 FREEZE_MIN_S = 1.0     # duração mínima para avisar
 CAMERA_NOISE = 0.15    # plano com diferença típica acima disso = câmera (não slide)
+# tela preta e frame solto entre cortes (pedido do JP, 22/10): Y em faixa limitada, preto = 16
+BLACK_MEAN = 22.0      # brilho médio do quadro todo abaixo disso…
+BLACK_MAX = 30.0       # …e nenhum bloco mais claro que isso = tela preta (aula de TV: a TV é clara, não conta)
+FLASH_MAX = 3          # frames soltos entre dois cortes (sobra de outro plano)
+FLASH_BLACK_MAX = 8    # frames pretos entre dois cortes
+SPIKE_REL = 0.35       # pico de mudança (corte) relativo ao maior pico da janela
+QUIET_REL = 0.25       # em volta do par de cortes tem que estar parado (movimento contínuo = transição)
 
 
 @dataclass
@@ -59,6 +66,7 @@ class Coarse:
 @dataclass
 class Event:
     kind: str                      # text_in | text_out | change | cut | color_jump | bright_jump | slide_transition | freeze
+                                   # | black (tela preta) | flash (frames soltos entre dois cortes)
                                    # (etapa 2, criados no analyze: spelling | name_tag)
     sample: int
     score: float
@@ -221,6 +229,9 @@ def detect(c: Coarse, content: tuple[int, int] | None = None) -> list[Event]:
         zones.append(zd)
         zone_of[s:e] = z
 
+    # ---- tela preta (quadro inteiro) dentro do conteúdo
+    events += _blacks(M, c_lo, c_hi)
+
     # ---- imagem congelada: plano de câmera em que tudo para de mudar
     frz = _freezes(D, bounds, zones, c_lo, c_hi)
     # quando a câmera volta, a imagem pula: isso é o fim do congelamento, não um corte
@@ -291,6 +302,85 @@ def detect(c: Coarse, content: tuple[int, int] | None = None) -> list[Event]:
           and all(abs(e.sample - t) > 4 for t in text_s)]
     out += _nms(cj, 4)
     return sorted(out, key=lambda e: e.sample)
+
+
+def is_black(m: np.ndarray) -> bool:
+    """Quadro todo preto (grade de brilho por bloco)."""
+    return float(m.mean()) < BLACK_MEAN and float(m.max()) < BLACK_MAX
+
+
+def _blacks(M: np.ndarray, c_lo: int, c_hi: int) -> list[Event]:
+    """Trechos de tela preta vistos na passada leve (4 por segundo)."""
+    out = []
+    k = max(c_lo, 0)
+    while k < c_hi:
+        if is_black(M[k]):
+            e = k
+            while e + 1 < c_hi and is_black(M[e + 1]):
+                e += 1
+            out.append(Event("black", k, 10000.0, (0, 0, 1, 1), value=(e - k + 1) / SAMPLE_FPS,
+                             note="tela preta", extra={"end_sample": int(e)}))
+            k = e + 1
+        else:
+            k += 1
+    return out
+
+
+def refine_black(path: str, rate: Rate, ev: Event) -> None:
+    """Primeiro e último frame da tela preta."""
+    fps = float(rate.fps)
+    t0 = (ev.sample - 1) / SAMPLE_FPS
+    t1 = (ev.extra.get("end_sample", ev.sample) + 1) / SAMPLE_FPS
+    f0 = max(0, rate.frame_at(max(t0, 0)))
+    frames = media.frames_window(path, rate, f0, max(2, rate.frame_at(t1) - f0 + 1), SW, SH)
+    flags = [is_black(_block_mean(fr.y.astype(np.float32), GH, GW)) for fr in frames]
+    idx = [k for k, b in enumerate(flags) if b]
+    if not idx:
+        ev.frame = ev.show_frame = rate.frame_at(ev.sample / SAMPLE_FPS)
+        n = max(1, int(round(ev.value * fps)))
+    else:
+        ev.frame = ev.show_frame = f0 + idx[0]
+        n = idx[-1] - idx[0] + 1
+    ev.extra["end_frame"] = int(ev.frame + n - 1)
+    ev.extra["frames"] = int(n)
+    ev.value = n / fps
+    ev.note = (f"tela preta por {n} frames" if n < fps else f"tela preta por {n / fps:.1f} s".replace(".", ","))
+
+
+def find_flash(Fs: np.ndarray, blacks: list[bool]) -> tuple[int, int, bool] | None:
+    """Frames soltos entre dois cortes na janela do refino.
+
+    Fs: notas por bloco de cada frame; blacks: frame é preto. Dois picos de mudança a até 3 frames um do
+    outro (até 8 se os frames do meio forem pretos), com tudo parado em volta (movimento contínuo, como a
+    transição do slide ou uma fusão, não conta). Devolve (primeiro frame solto, quantos, são pretos)."""
+    if len(Fs) < 3:
+        return None
+    d = np.abs(np.diff(Fs, axis=0)).mean(axis=(1, 2))
+    big = float(d.max())
+    if big < 4.0:
+        return None
+    thr = max(SPIKE_REL * big, 6.0 * float(np.median(d)) + 1.0)
+    quiet = QUIET_REL * big
+    spikes = [k for k in range(len(d)) if d[k] >= thr]
+    best = None
+    for a in range(len(spikes)):
+        for b in range(a + 1, len(spikes)):
+            i, j = spikes[a], spikes[b]
+            n = j - i                      # frames i+1..j são os soltos
+            mid_black = all(blacks[i + 1:j + 1])
+            if n > (FLASH_BLACK_MAX if mid_black else FLASH_MAX):
+                break
+            if any(d[k] >= quiet for k in range(i + 1, j)):
+                continue
+            if i > 0 and d[i - 1] >= quiet:
+                continue
+            if j + 1 < len(d) and d[j + 1] >= quiet:
+                continue
+            best = (i + 1, n, mid_black)
+            break
+        if best:
+            break
+    return best
 
 
 def _freezes(D: np.ndarray, bounds: list[int], zones: list[np.ndarray], c_lo: int, c_hi: int) -> list[Event]:
@@ -375,6 +465,9 @@ def refine(path: str, rate: Rate, ev: Event) -> None:
     if ev.kind == "freeze":
         refine_freeze(path, rate, ev)
         return
+    if ev.kind == "black":
+        refine_black(path, rate, ev)
+        return
     fps = float(rate.fps)
     t0 = (ev.sample - 3) / SAMPLE_FPS
     t1 = (ev.sample + 2) / SAMPLE_FPS
@@ -403,6 +496,9 @@ def refine(path: str, rate: Rate, ev: Event) -> None:
             d = np.abs(np.diff(Fs, axis=0)).mean(axis=(1, 2))
             k = int(np.argmax(d)) + 1
             ev.frame = ev.show_frame = f0 + k
+            fl = find_flash(Fs, [is_black(f[0]) for f in feats])
+            if fl is not None:
+                ev.extra["flash"] = {"frame": int(f0 + fl[0]), "n": int(fl[1]), "black": bool(fl[2])}
             return
         series = np.abs(Fs - Fs[0]).sum(axis=(1, 2))
     total = series[-1] if series[-1] > 0 else series.max()
@@ -548,7 +644,8 @@ def score_threshold(kind: str, sensitivity: int) -> float:
     s = max(0, min(100, sensitivity)) / 100.0
     if kind in ("text_in", "text_out", "change"):
         hi, lo = 400.0, 25.0
-    elif kind in ("cut", "slide_transition", "freeze", "spelling", "name_tag", "speech_phrase", "speech_repeat"):
+    elif kind in ("cut", "slide_transition", "freeze", "spelling", "name_tag", "speech_phrase", "speech_repeat",
+                  "black", "flash"):
         return 0.0
     else:
         hi, lo = 600.0, 120.0

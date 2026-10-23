@@ -119,6 +119,10 @@ async function screenFinal(root) {
       text: label, onclick: () => { if (r.with_frame !== val) mark(r.cid, { with_frame: val }); } });
     return h("div", { class: "seg f-seg", role: "group", "aria-label": "Com ou sem frame" }, mk(true, "Com frame"), mk(false, "Sem frame"));
   }
+  // situação do vídeo e etiqueta do comentário (22/10): só aparecem, a cópia continua igual
+  const TAGL = { audio: "Áudio", cor: "Cor", texto: "Texto", corte: "Corte", tarja: "Tarja", slide: "Slide", vinheta: "Vinheta", outro: "Outro" };
+  const stOf = Object.fromEntries((F5.videos || []).map((v) => [v.id, v.status]));
+  const stBadge = (vid) => stOf[vid] ? h("span", { class: "f-st " + stOf[vid], text: stOf[vid] === "aprovado" ? "✓ aprovado" : "↩ volta" }) : null;
   function drawList() {
     drawHead();
     if (!rows.length) {
@@ -135,8 +139,8 @@ async function screenFinal(root) {
             loading: "lazy", onerror: (e) => { e.target.replaceWith(h("span", { class: "f-noimg", text: "sem imagem neste computador" })); } }))
         : h("div", { class: "f-th none", text: "sem imagem" }),
       h("a", { class: "f-when", href: `#/revisao/${r.n}`, title: `Abrir o vídeo ${pad(r.n)} na revisão` },
-        h("b", { text: `Vídeo ${pad(r.n)}` }), h("span", { class: "mono", text: r.tc })),
-      h("span", { class: "f-text", text: r.text }),
+        h("b", {}, `Vídeo ${pad(r.n)}`, stBadge(r.vid)), h("span", { class: "mono", text: r.tc })),
+      h("span", { class: "f-text" }, r.tag && TAGL[r.tag] ? h("span", { class: "f-tag", text: TAGL[r.tag] }) : null, r.text),
       r.general ? h("span", { class: "f-gen faint", text: "vale para o vídeo todo" }) : seg(r))));
   }
 
@@ -362,6 +366,18 @@ async function screenRelatorio(root) {
     h("div", { class: "rel-r total" }, h("span", { class: "c1", text: "Total" }), h("span", { class: "c2 mono", text: String(M.videos) }),
       h("span", { class: "c3 mono", text: hm(M.edited_s) }), h("span", { class: "c4" })));
 
+  // revisão por editor (22/10): aprovados de primeira, voltaram e correções por tipo (etiquetas dos comentários)
+  const TAGL = { audio: "Áudio", cor: "Cor", texto: "Texto", corte: "Corte", tarja: "Tarja", slide: "Slide", vinheta: "Vinheta", outro: "Outro", sem: "Sem etiqueta" };
+  const revEds = M.editors.filter((e) => e.comments || e.approved_first || e.returned);
+  const revCard = revEds.length ? h("div", { class: "card rel-card" }, h("span", { class: "caps", text: "Revisão por editor" }),
+    revEds.map((e) => h("div", { class: "rel-rev" },
+      h("div", { class: "rel-rev-h" }, h("b", { text: e.name }),
+        h("span", { class: "muted", text: `${plural(e.approved_first || 0, "aprovado de primeira", "aprovados de primeira")} · ${plural(e.returned || 0, "voltou", "voltaram")} · ${plural(e.comments || 0, "correção", "correções")}` })),
+      h("div", { class: "rel-tags" }, Object.entries(e.tags || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
+        h("span", { class: "f-tag", text: `${TAGL[k] || k} ${n}` }))))),
+    h("span", { class: "hint", text: "“Voltou” = o vídeo teve 2ª rodada ou foi marcado “volta para o editor”. Os tipos vêm das etiquetas dos comentários." }))
+    : null;
+
   const maxC = Math.max(1, ...M.courses.map((c) => c.seconds));
   const courses = h("div", { class: "card rel-card" }, h("span", { class: "caps", text: "Por curso" }),
     M.courses.length ? M.courses.map((c) => h("div", { class: "rel-bar" },
@@ -408,7 +424,7 @@ async function screenRelatorio(root) {
         stat("Aproveitamento", fmtPct(M.usage_pct), "editado ÷ gravado", "var(--accent-text)"),
         stat("Vídeos", String(M.videos), "cada vídeo é contado uma vez")),
       h("div", { class: "rel-cols" },
-        h("div", { class: "rel-l" }, edTable, courses),
+        h("div", { class: "rel-l" }, edTable, revCard, courses),
         h("div", { class: "rel-rc" }, weeks, src)))));
 }
 

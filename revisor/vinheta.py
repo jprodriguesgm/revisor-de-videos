@@ -29,6 +29,13 @@ FULL_COVER = 0.99        # só compara frames em que a vinheta cobre (quase) a t
 VISIBLE = 0.5            # vinheta "visível" quando a opacidade média passa disso
 END_TOLERANCE = 10       # frames que podem faltar no fim da vinheta final (o JP aceitou 6
                          # numa aula corrigida; o fim da vinheta é parado). Configurável.
+# vinheta sem fundo (pedido do JP, 22/10): o editor esquece o fundo por baixo da vinheta e, nas partes
+# transparentes dela, aparece preto. Y em faixa limitada: preto = 16.
+CLEAR = 0.05             # pixel da vinheta "transparente" abaixo disso
+CLEAR_MIN = 0.03         # o frame precisa ter pelo menos 3% de área transparente para conferir
+BLACK_Y = 24.0           # média do que aparece por baixo abaixo disso…
+BLACK_Y90 = 30.0         # …e quase nada mais claro que isso = preto
+BLACK_MIN_FRAMES = 3     # quantos frames assim para avisar
 
 
 @dataclass
@@ -113,6 +120,21 @@ def _score(d: np.ndarray) -> float:
     return float(d.mean()) if d.size else 1e9
 
 
+def black_under(video: np.ndarray, sig: Signature, off: int, k0: int, k1: int) -> list[int]:
+    """Frames da vinheta (índices k0..k1-1 do arquivo) em que, nas partes transparentes, aparece preto."""
+    if sig.alpha is None:
+        return []
+    out = []
+    for k in range(max(k0, 0), min(k1, sig.n, video.shape[0] - off)):
+        clear = sig.alpha[k] < CLEAR
+        if clear.mean() < CLEAR_MIN:
+            continue
+        vals = video[off + k][clear]
+        if vals.size and float(vals.mean()) < BLACK_Y and float(np.percentile(vals, 90)) < BLACK_Y90:
+            out.append(k)
+    return out
+
+
 def _five(center: int, total: int) -> list[int]:
     return [f for f in range(center - 2, center + 3) if 0 <= f < total]
 
@@ -173,6 +195,10 @@ def find(path: str, rate: Rate, total_frames: int, vin_in: Signature | None,
             if best_off > 2:
                 r.warnings.append({"kind": "vinheta_inicial_atrasada", "frame": 0,
                                    "note": f"{best_off} frames antes da vinheta inicial"})
+            blk = black_under(video, vin_in, best_off, 0, (r.content_first_frame or best_off) - best_off)
+            if len(blk) >= BLACK_MIN_FRAMES:
+                r.warnings.append({"kind": "vinheta_inicial_sem_fundo", "frame": best_off + blk[0],
+                                   "note": f"vinheta inicial sem fundo: preto por baixo dela em {len(blk)} frames"})
             r.frames_in = _five(r.content_first_frame, total_frames)
         else:
             r.warnings.append({"kind": "vinheta_inicial_ausente", "frame": 0,
@@ -196,6 +222,10 @@ def find(path: str, rate: Rate, total_frames: int, vin_in: Signature | None,
                 matched = video.shape[0] - best_off      # o vídeo acaba antes da vinheta
             r.end_found = True
             r.end_first_frame = first + best_off + vis
+            blk = black_under(video, vin_out, best_off, 0, matched)
+            if len(blk) >= BLACK_MIN_FRAMES:
+                r.warnings.append({"kind": "vinheta_final_sem_fundo", "frame": first + best_off + blk[0],
+                                   "note": f"vinheta final sem fundo: preto por baixo dela em {len(blk)} frames"})
             r.end_matched = matched
             if matched < vin_out.n - max(2, END_TOLERANCE):
                 r.warnings.append({"kind": "vinheta_final_cortada",

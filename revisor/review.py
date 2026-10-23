@@ -57,6 +57,13 @@ def new_review(folder: str | Path) -> dict:
     }
 
 
+# etiqueta de cada comentário (pedido do JP, 22/10): o relatório do mês conta por editor
+TAGS = {"audio": "Áudio", "cor": "Cor", "texto": "Texto", "corte": "Corte", "tarja": "Tarja",
+        "slide": "Slide", "vinheta": "Vinheta", "outro": "Outro"}
+# situação do vídeo na revisão
+STATUSES = {"aprovado": "Aprovado", "volta": "Volta para o editor"}
+
+
 def general_of(v: dict) -> dict | None:
     """Comentário geral do vídeo (sem tempo: "aumentar o áudio geral", "ajustar a cor da pele")."""
     g = v.get("general")
