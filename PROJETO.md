@@ -944,6 +944,9 @@ Limites conhecidos da etapa 2:
   o job nem começa). Trocado para macos-15 (também M1/arm64; deployment target 11.0 e check_macos_min continuam
   valendo; o cache dos programas usa a mesma chave). Se o macos-15 também faltar, esperar e rodar de novo.
 - 22/10, 23h: o JP aprovou a Montagem 17 (Mac e Windows) → versão oficial 1.0.2 do commit 66ec74b (+ só GUIA).
+  PUBLICADA (23/10 de madrugada): "Revisor de Vídeos 1.0.2", TUDO OK nos dois, sem PowerShell; Mac 40/41 (o +7
+  frames conhecido da imagem congelada). PRÓXIMO: calibrar frame solto / tela preta / vinheta sem fundo com as aulas
+  e vinhetas reais (pedir prints ao JP se der alarme); limpar "MTL0 (...)" no nome da placa do Mac.
 - PEDIDOS DE 22/10 À NOITE (para a 1.0.2, junto com o Trello) — o JP escolheu da lista de ideias:
   · ANALYSIS_VERSION 11 (todo o cache é refeito uma vez): avisos "black" (tela preta: quadro todo com média
     < 22 e nenhum bloco > 30 na passada leve; refine_black acha os frames) e "flash" (no refino de cada corte,
