@@ -6,6 +6,19 @@ ortografia, tarja com o nome do professor, transições de slide, vinhetas e fal
 
 Tudo roda no seu computador: **nenhum vídeo, frame ou comentário sai dele**.
 
+**Novidades da versão 1.0.2**
+- **Copiar para o Trello** (tecla T): uma imagem só, com o que está na tela e o comentário escrito embaixo.
+- **Conferir correções** do vídeo que voltou: imagem de como estava × vídeo novo, corrigido / não corrigido
+  ([seção 5](#5-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo)).
+- Avisos novos: **frame solto entre cortes**, **frame preto**, **tela preta** e **vinheta sem fundo**.
+- **Situação do vídeo** (aprovado / volta para o editor) e **tipo de cada correção** (etiquetas), com
+  "Revisão por editor" no relatório do mês.
+- **Zoom na linha do tempo** (roda do mouse sobre a forma de onda).
+- Já na 1.0.1: **Analisar de novo**, vectorscope com alvos coloridos, falas na placa de vídeo no Windows
+  (Vulkan) e escolha de pasta sem PowerShell no Windows.
+
+Na primeira abertura da 1.0.2, cada pasta é analisada de novo uma vez (os avisos novos precisam reler os vídeos).
+
 **Neste guia**
 1. [Baixar e instalar](#1-baixar-e-instalar)
 2. [Primeira vez: equipe e vinhetas](#2-primeira-vez-equipe-e-vinhetas)
