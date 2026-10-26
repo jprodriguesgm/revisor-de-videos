@@ -310,6 +310,7 @@ def export_package(rev: dict, dest_parent: Path, frame_fn) -> dict:
             pass
     data = copy.deepcopy(rev)
     data.pop("folder", None)
+    data.pop("raw_folder", None)          # caminho dos brutos (só neste computador)
     data.pop("pkg_frames", None)
     frames_map, size, missing = {}, 0, 0
     for k, v in enumerate(data.get("videos", [])):
@@ -402,6 +403,7 @@ def read_package(path: str | Path) -> tuple[dict, Path]:
     data["project"] = data["project"].strip()[:120] or "revisão"
     data["key"] = review.project_key(data["project"])
     data.pop("folder", None)
+    data.pop("raw_folder", None)
     return data, p.parent
 
 

@@ -1,8 +1,11 @@
 /* Revisor de Vídeos — tela de revisão (etapa 4).
    Usa as utilidades de app.js (h, api, toast, icon, pad, plural, stem, vlabel, openModal…).
-   Atalhos: ← → (itens) · ↑ ↓ (cortes) · Shift+← → (1 frame) · C comentar · V ver o trecho ·
+   Atalhos: ← → (itens) · ↑ ↓ (cortes) · Shift+← → (1 frame) · Espaço assistir (vídeo inteiro) ·
+   J voltar 5 s · K pausar · L tocar / acelerar · A parar nos avisos · C comentar · V ver o trecho ·
    G gráficos · P conta-gotas · F tela cheia · ⌘C/Ctrl+C copiar · + − zoom · Z caber/100% ·
-   T copiar para o Trello · N próxima aula · Esc fecha. */
+   T copiar para o Trello · N próxima aula · Esc fecha.
+   Modo editor (Configurações → Modo do app): a mesma tela vira "Checagem", sem comentários, cópias,
+   gráficos e conta-gotas; o painel da direita lista os avisos do vídeo. */
 "use strict";
 
 // estado que continua ao trocar de item e de vídeo
@@ -12,6 +15,7 @@ const RV = {
   graph: "luma",       // luma | parade
   picks: [],           // pontos fixados do conta-gotas: [{x, y}] em pixels do vídeo
   showBg: true,        // conta-gotas: gráfico completo do frame ao fundo
+  jump: null,          // {n, frame}: abrir o vídeo n já neste frame (vindo do "Pronto para enviar")
 };
 const PICK_COLORS = ["#4d8cf5", "#e8a33d", "#58c28a", "#e06cb0"];
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -76,9 +80,12 @@ async function screenRevisao(root, arg) {
   // estado usado também ao sair da tela (declarado antes de qualquer "return")
   let cmtTimer = null, cmtFrame = null, cmtEl = null, savedEl = null;
   let clip = null;
+  let play = null;            // Espaço: o vídeo inteiro tocando no visor
+  const ED = EDITOR();        // modo editor: checagem antes de entregar
   screenCleanup = () => {
     flushComment();
     closeClip();
+    if (play) { const p = play; haltPlay(); dropPlayer(p); }
     timers.forEach(clearInterval);
     cleanups.forEach((f) => { try { f(); } catch (e) { /* nada */ } });
     document.body.classList.remove("rv-on");
@@ -175,6 +182,9 @@ async function screenRevisao(root, arg) {
     } else if (nf) {
       label = "Próxima pasta";
       title = `Abrir a revisão de “${nf.project}” · ${nf.status_text} (N)`;
+    } else if (ED) {
+      label = "Pronto para enviar";
+      title = "Última aula desta pasta: ver o que ainda falta antes de enviar (N)";
     } else {
       label = "Resumo final";
       title = "Última aula desta pasta: abrir o Resumo final (N)";
@@ -198,8 +208,8 @@ async function screenRevisao(root, arg) {
   const foot = h("footer", { class: "rv-foot" });
   root.appendChild(h("div", { class: "rv" },
     h("div", { class: "rv-bar" }, tabs,
-      h("div", { class: "rv-bar-r" }, h("span", { class: "muted", text: "Editor deste vídeo" }), edSel, applyAll, teamLink,
-        h("span", { class: "vsep" }), countTxt, slideBtn, adjBtn, nextBtn)),
+      h("div", { class: "rv-bar-r" }, ED ? null : [h("span", { class: "muted", text: "Editor deste vídeo" }), edSel, applyAll, teamLink,
+        h("span", { class: "vsep" })], countTxt, slideBtn, adjBtn, nextBtn)),
     h("div", { class: "rv-main" }, stage, side),
     foot));
   drawTabs();
@@ -281,18 +291,23 @@ async function screenRevisao(root, arg) {
   const beforeImg = h("img", { alt: "Frame da rodada anterior" });
   const beforeLbl = h("span", { class: "mono" });
   const beforeBox = h("div", { class: "vw-before hidden", title: "Como estava na rodada anterior" }, beforeImg, beforeLbl);
-  const vw = h("div", { class: "vw", tabindex: "-1" }, layer, hudTL, hudTR, stepsBox, mini, zoomTxt, msgBox, cross, loupe, clipBox, beforeBox);
+  const playHud = h("button", { class: "vw-playhud hidden", type: "button", title: "Clique para mudar a velocidade (L)",
+    onclick: () => playFaster(true) });
+  const vw = h("div", { class: "vw", tabindex: "-1" }, layer, hudTL, hudTR, stepsBox, mini, zoomTxt, msgBox, cross, loupe, playHud, clipBox, beforeBox);
   const k = (key, label, fn, title, opt) => h("button", { class: "tool", onclick: fn, title: title || label,
     "aria-label": title || label }, h("kbd", { text: key }), h("span", { class: "l" + (opt ? " opt" : ""), text: label }));
   const tGraphs = k("G", "Gráficos", () => setMode(RV.mode === "graphs" ? null : "graphs"));
   const tPick = k("P", "Conta-gotas", () => setMode(RV.mode === "pick" ? null : "pick"));
   const tClip = k("V", "Ver trecho", () => toggleClip(), "Ver o trecho em volta deste frame");
+  const tPlay = k("Espaço", "Assistir", () => togglePlayAll(), "Assistir ao vídeo inteiro a partir daqui (Espaço; J volta 5 s, K pausa, L acelera)");
+  const tStop = k("A", "Parar nos avisos", () => toggleStopWarn(), "Ao assistir, pausar sozinho em cada aviso", true);
   const tools = h("div", { class: "rv-tools" },
     k("←", "Anterior", () => go(-1), null, true), k("→", "Próximo", () => go(1), null, true),
     k("↑", "Corte", () => goCut(-1), "Corte anterior", true), k("↓", "Corte", () => goCut(1), "Próximo corte", true),
-    k("C", "Comentar", () => focusComment()),
-    tClip, tGraphs, tPick, k("F", "Tela cheia", () => fullscreen()),
-    k(IS_MAC ? "⌘ C" : "Ctrl C", "Copiar", () => copyFrame(), "Copiar frame + comentário"));
+    tPlay, tStop,
+    ED ? null : k("C", "Comentar", () => focusComment()),
+    tClip, ED ? null : tGraphs, ED ? null : tPick, k("F", "Tela cheia", () => fullscreen(), null, !ED),
+    ED ? null : k(IS_MAC ? "⌘ C" : "Ctrl C", "Copiar", () => copyFrame(), "Copiar frame + comentário", true));
   const hint = h("span", { class: "rv-hint" });
   stage.append(vw, tools, hint);
   if (!M.has_video) {
@@ -400,13 +415,13 @@ async function screenRevisao(root, arg) {
         applyZoom();
       }
     }
-    if (RV.mode === "pick" && !clipOpen()) pickHover(e);
+    if (RV.mode === "pick" && !clipOpen() && !play) pickHover(e);
   });
   listen(vw, "pointerup", (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     const moved = drag.moved;
     drag = null;
-    if (!moved && RV.mode === "pick" && !clipOpen()) pickFix(e);
+    if (!moved && RV.mode === "pick" && !clipOpen() && !play) pickFix(e);
   });
   listen(vw, "pointerleave", () => { if (RV.mode === "pick") { cross.classList.add("hidden"); loupe.classList.add("hidden"); } });
   mini.addEventListener("click", (e) => {
@@ -429,7 +444,7 @@ async function screenRevisao(root, arg) {
     const token = ++loadToken;
     const full = frameUrl(f, "full");
     msgBox.classList.add("hidden");
-    if (loadedFull.has(full)) { img.src = full; vw.classList.remove("loading"); return; }
+    if (loadedFull.has(full)) { img.src = full; vw.classList.remove("loading"); dropPlayer(); return; }
     vw.classList.add("loading");
     if (byFrame.has(f)) img.src = frameUrl(f, "thumb");
     miniImg.src = frameUrl(f, "thumb");
@@ -439,10 +454,12 @@ async function screenRevisao(root, arg) {
       if (token !== loadToken) return;
       img.src = full;
       vw.classList.remove("loading");
+      dropPlayer();
     };
     im.onerror = () => {
       if (token !== loadToken) return;
       vw.classList.remove("loading");
+      dropPlayer();
       if (!byFrame.has(f)) img.removeAttribute("src");
       msgBox.textContent = M.has_video ? "Não consegui ler este frame do vídeo." : "Sem miniatura deste frame (o vídeo não está neste computador).";
       msgBox.classList.remove("hidden");
@@ -489,6 +506,12 @@ async function screenRevisao(root, arg) {
       left: pct(p.x / W), top: pct(p.y / H), borderColor: PICK_COLORS[j] } }, h("b", { style: { background: PICK_COLORS[j] }, text: String(j + 1) }))));
   }
   function drawHud() {
+    if (play) {                     // tocando: só o tempo (o resto volta ao pausar)
+      hudTL.textContent = `${tcOf(cur.frame)} · tocando`;
+      hudTR.className = "vw-hud tr hidden";
+      stepsBox.classList.add("hidden");
+      return;
+    }
     const it = curItem();
     const onItem = it && (it.frame === cur.frame || (it.steps && cur.step !== null));
     let t = tcOf(cur.frame);
@@ -534,6 +557,7 @@ async function screenRevisao(root, arg) {
   }
   function goItem(i, step) {
     if (i === null || i < 0 || i >= items.length) return;
+    haltPlay();
     flushComment();
     if (clipOpen()) closeClip();
     const it = items[i];
@@ -544,6 +568,7 @@ async function screenRevisao(root, arg) {
   }
   function goStep(j) { goItem(cur.i, j); }
   function goFrame(f, snap) {
+    haltPlay();
     f = Math.max(0, Math.min(M.frames - 1, Math.round(f)));
     if (snap) {
       const near = items.reduce((b, it, j) => (Math.abs(it.frame - f) < snap && (b === null || Math.abs(it.frame - f) < Math.abs(items[b].frame - f)) ? j : b), null);
@@ -560,6 +585,7 @@ async function screenRevisao(root, arg) {
     show();
   }
   function go(d) {
+    haltPlay();
     if (RV.mode === "check" && CK.items.length) { ckGo(CK.sel === null ? 0 : CK.sel + d); return; }
     if (!items.length) return;
     const it = curItem();
@@ -665,6 +691,8 @@ async function screenRevisao(root, arg) {
     }
   }
   function focusComment() {
+    if (ED) return;
+    if (play) stopPlay();                // C tocando: pausa e comenta no frame onde parou
     if (RV.mode) setMode(null);          // redesenha o painel na hora: o campo já existe
     if (cmtEl) { cmtEl.focus(); cmtEl.setSelectionRange(cmtEl.value.length, cmtEl.value.length); }
   }
@@ -701,13 +729,41 @@ async function screenRevisao(root, arg) {
     } else body = [h("div", { text: it.note || it.label })];
     const btns = dis ? [act("Desfazer “Ignorar”", () => dismiss(it, true))] :
       [act("Ignorar", () => dismiss(it)), it.kind === "spelling" ? act("Aceitar", () => accept(it)) : null,
-       act("Comentar", () => { cmtEl.value = suggestion(it); saveComment(cur.frame, cmtEl.value); focusComment(); })];
+       ED ? null : act("Comentar", () => { cmtEl.value = suggestion(it); saveComment(cur.frame, cmtEl.value); focusComment(); })];
     return h("div", { class: "rv-warn" + (dis ? " off" : "") },
       h("div", { class: "hd" }, h("span", { class: "k", text: `${it.label} · ${dis ? "ignorado" : "conferir"}` }),
         h("span", { class: "faint", text: it.source || "" })),
       body, h("div", { class: "row", style: { gap: "6px" } }, btns),
       it.kind === "spelling" && !dis ? h("span", { class: "faint", style: { fontSize: "11px" },
-        text: "Aceitar: a palavra entra na sua lista e deixa de ser avisada em todas as aulas." }) : null);
+        text: "Aceitar: a palavra entra na sua lista e deixa de ser avisada em todas as aulas." }) : null,
+      ED && !dis ? h("span", { class: "faint", style: { fontSize: "11px" },
+        text: "Ignorar: quando não é erro (fica registrado). Se for erro, corrija no Premiere e exporte com o mesmo nome." }) : null);
+  }
+
+  // ---- modo editor: o painel da direita é a lista dos avisos deste vídeo
+  function drawChecklist() {
+    side.className = "rv-side rv-chk";
+    const it = curItem();
+    const onItem = it && (it.frame === cur.frame || (it.steps && cur.step !== null));
+    const warns = items.map((x, j) => [x, j]).filter(([x]) => x.warn);
+    const open = warns.filter(([x]) => !x.dismissed).length;
+    const clipBtn = clipOpen() ? h("button", { class: "btn ghost-blue", onclick: () => closeClip(), text: "Voltar ao frame · Esc" })
+      : h("button", { class: "btn ghost", onclick: () => openClip() }, rvIcon("play"), `Ver momento (${secTxt(RV.clipHalf)} s antes e depois)`);
+    fill(side,
+      h("div", { class: "rv-head" }, h("span", { class: "tt", text: "Avisos deste vídeo" }),
+        h("span", { class: "mono faint", text: `${nn} · ${tcOf(cur.frame)}` })),
+      onItem && it.warn ? warnCard(it) : null,
+      M.has_video ? clipBtn : null,
+      h("span", { class: "rv-sub", text: !warns.length ? "Nenhum aviso neste vídeo." :
+        open ? `${plural(open, "aviso para olhar", "avisos para olhar")}` + (warns.length - open ? ` · ${plural(warns.length - open, "ignorado", "ignorados")}` : "")
+          : "Todos os avisos foram olhados." }),
+      h("div", { class: "ed-list" }, warns.map(([x, j]) => h("button", { type: "button",
+        class: "ed-w" + (x.dismissed ? " off" : "") + (j === cur.i && onItem ? " on" : ""), onclick: () => goItem(j) },
+        h("span", { class: "mono t", text: tcOf(x.frame) }),
+        h("span", { class: "x" }, h("b", { text: x.label }), x.note && x.note !== x.label ? ` · ${x.note}` : "",
+          x.dismissed ? h("span", { class: "faint", text: " · ignorado" }) : null)))),
+      h("div", { class: "notice info", style: { fontSize: "12px" } }, icon("info"),
+        h("span", { text: "Corrigiu no Premiere? Exporte com o mesmo nome por cima do arquivo: o app percebe que o vídeo mudou e analisa de novo." })));
   }
   async function dismiss(it, undo) {
     try { await api("dismiss", { id: vid, key: it.key, undo: !!undo }); await reload(); }
@@ -1016,19 +1072,25 @@ async function screenRevisao(root, arg) {
   }
 
   function drawSide() {
+    if (ED && RV.mode) RV.mode = null;           // gráficos, conta-gotas e conferir correções: só no modo revisor
     if (RV.mode === "graphs") drawGraphs();
     else if (RV.mode === "pick") drawPick();
     else if (RV.mode === "check") drawCheck();
+    else if (ED) drawChecklist();
     else drawComment();
     if (RV.mode !== "check") beforeBox.classList.add("hidden");
     tGraphs.classList.toggle("on", RV.mode === "graphs");
     tPick.classList.toggle("on", RV.mode === "pick");
     tClip.classList.toggle("on", clipOpen());
+    tPlay.classList.toggle("on", !!play);
+    tStop.classList.toggle("on", !!RV.stopWarn);
+    tStop.setAttribute("aria-pressed", RV.stopWarn ? "true" : "false");
     vw.classList.toggle("picking", RV.mode === "pick");
     hint.textContent = RV.mode === "check" ? "← → de correção em correção · o quadro “Antes” mostra como estava · Esc volta" :
       RV.mode === "graphs" ? "Os gráficos acompanham o frame: com ← → eles se atualizam. G ou Esc fecha." :
       RV.mode === "pick" ? "Mova o mouse sobre o vídeo. Clique para fixar o ponto (até 4) · arraste para mover com zoom · P ou Esc sai." :
-      "↑ ↓ de corte em corte · Shift + ← → anda 1 frame · roda do mouse ou pinça: zoom · Z: caber / 100% · T copiar para o Trello · N próxima aula";
+      ED ? "Espaço assiste ao vídeo · ← → de aviso em aviso · ↑ ↓ de corte em corte · Shift + ← → anda 1 frame · roda do mouse: zoom · N próxima aula" :
+      "Espaço assiste ao vídeo · ↑ ↓ de corte em corte · Shift + ← → anda 1 frame · roda do mouse ou pinça: zoom · Z: caber / 100% · T Trello · N próxima aula";
     requestAnimationFrame(layoutViewer);
   }
   function setMode(m) {
@@ -1049,6 +1111,7 @@ async function screenRevisao(root, arg) {
   const clipOpen = () => !!clip;
   function openClip() {
     if (!M.has_video) { toast("O trecho precisa do vídeo na pasta deste computador.", true); return; }
+    if (play) stopPlay();                 // o trecho abre em volta do frame onde o vídeo parou
     flushComment();
     const half = RV.clipHalf;
     const t = secondsOf(R, cur.frame);
@@ -1060,6 +1123,7 @@ async function screenRevisao(root, arg) {
     const meter = vuMeter();
     const c = clip = { video, start, end, base: 0, tries: [], meter };
     const live = () => clip === c;          // depois de fechar, os eventos do <video> não fazem nada
+    c.live = live;
     const setIcon = () => playBtn.replaceChildren(rvIcon(video.paused ? "play" : "pause"));
     // 1º o vídeo original; se o navegador não tocar, um trecho em MP4 (H.264); por último, WebM
     const fallbacks = ["mp4", "webm"];
@@ -1162,7 +1226,7 @@ async function screenRevisao(root, arg) {
     const ac = audioCtx(), m = c.meter;
     if (!ac || m.src) return;
     const go = () => {
-      if (clip !== c || m.src || ac.state !== "running") return;
+      if (!c.live() || m.src || ac.state !== "running") return;
       try {
         m.src = ac.createMediaElementSource(c.video);
         m.an = ac.createAnalyser();
@@ -1177,7 +1241,7 @@ async function screenRevisao(root, arg) {
       m.buf = new Float32Array(m.an.fftSize);
       m.last = performance.now();
       const loop = (now) => {
-        if (clip !== c) return;
+        if (!c.live()) return;
         meterStep(m, now);
         m.raf = requestAnimationFrame(loop);
       };
@@ -1214,6 +1278,144 @@ async function screenRevisao(root, arg) {
     try { if (m.src) m.src.disconnect(); if (m.an) m.an.disconnect(); } catch (e) { /* nada */ }
   }
   function toggleClip() { if (clipOpen()) closeClip(); else openClip(); }
+
+  // ------------------------------------------------------------------ Espaço: assistir ao vídeo inteiro (pedido do JP, 26/10)
+  // Toca o vídeo original no próprio visor, a partir do frame atual (o zoom continua valendo). A linha azul
+  // anda pela forma de onda e o HUD mostra o tempo. Pausar (Espaço, K, ou qualquer navegação) deixa o visor no
+  // frame exato onde parou, como um frame marcado: ← → ↑ ↓ continuam dali e C comenta ali.
+  // J volta 5 s · L toca / acelera (1× → 1,5× → 2×) · A liga "Parar nos avisos" (pausa sozinho em cada aviso).
+  const SPEEDS = [1, 1.5, 2];
+  if (RV.stopWarn === undefined) RV.stopWarn = !!V.play_stop_warn;
+  let dropping = null;                       // <video> que sai quando a imagem parada carregar
+  const atFrame = (f) => ((f + 0.5) * R.d) / R.n;      // meio do frame: o navegador mostra o frame certo
+  function startPlay() {
+    if (play) return;
+    if (!M.has_video) { toast("Para assistir, o vídeo precisa estar na pasta deste computador.", true); return; }
+    if (!M.playable) { toast("Este formato de vídeo não toca no navegador. Use V para ver um trecho.", true); return; }
+    flushComment();
+    if (clipOpen()) closeClip();
+    if (dropping) dropPlayer();
+    const from = cur.frame >= M.frames - 2 ? 0 : cur.frame;       // no fim: volta ao começo
+    const video = h("video", { class: "vw-play", playsinline: true, preload: "auto" });
+    Object.assign(video.style, { width: W + "px", height: H + "px" });
+    const meter = vuMeter();
+    meter.el.classList.add("play");
+    const p = play = { video, meter, rate: 1, last: from, waveAt: 0, cb: 0 };
+    p.live = () => play === p;
+    layer.insertBefore(video, ov);
+    vw.appendChild(meter.el);
+    vw.classList.add("playing");
+    video.addEventListener("loadedmetadata", () => {
+      if (!p.live()) return;
+      video.currentTime = atFrame(from);
+      video.playbackRate = p.rate;
+      video.play().catch(() => { if (p.live()) { toast("O navegador não deixou tocar o vídeo. Clique em Assistir de novo.", true); stopPlay(); } });
+    });
+    video.addEventListener("playing", () => { if (p.live()) meterAttach(p); });
+    video.addEventListener("ended", () => { if (p.live()) stopPlay(); });
+    video.addEventListener("error", () => {
+      if (!p.live()) return;
+      toast("Não consegui tocar este vídeo neste navegador. Use V para ver um trecho.", true);
+      stopPlay();
+    });
+    const step = (now, md) => {
+      if (!p.live()) return;
+      playTick(p, md && md.mediaTime !== undefined ? md.mediaTime : video.currentTime, now);
+      p.cb = video.requestVideoFrameCallback ? video.requestVideoFrameCallback(step) : requestAnimationFrame((n) => step(n));
+    };
+    p.cb = video.requestVideoFrameCallback ? video.requestVideoFrameCallback(step) : requestAnimationFrame((n) => step(n));
+    const ac = audioCtx();                    // o áudio do navegador "acorda" no clique/tecla que começou o play
+    if (ac && ac.state !== "running") ac.resume().catch(() => {});
+    video.src = `/api/media?id=${vid}`;
+    drawPlayHud();
+    drawHud();
+    drawOverlay();
+    tPlay.classList.add("on");
+  }
+  function playTick(p, t, now) {
+    const f = Math.max(0, Math.min(M.frames - 1, frameAt(R, t)));
+    if (RV.stopWarn && f > p.last) {
+      const j = items.findIndex((it) => it.warn && !it.dismissed && it.frame > p.last && it.frame <= f);
+      if (j >= 0) { goItem(j); toast(`Parou no aviso: ${items[j].label}. Espaço continua.`); return; }
+    }
+    p.last = f;
+    if (f === cur.frame) return;
+    cur.frame = f; cur.step = null;
+    let j = null;
+    for (let x = 0; x < items.length; x++) if (items[x].start <= f) j = x;
+    cur.i = j;
+    drawHud();
+    if (now - p.waveAt > 120) { p.waveAt = now; drawWave(); }
+  }
+  /** Para o vídeo (sem mudar de frame). O <video> fica por cima até a imagem parada carregar. */
+  function haltPlay() {
+    const p = play;
+    if (!p) return null;
+    play = null;
+    const t = p.video.currentTime;
+    p.video.pause();
+    if (p.video.cancelVideoFrameCallback && p.cb) { try { p.video.cancelVideoFrameCallback(p.cb); } catch (e) { /* nada */ } }
+    cancelAnimationFrame(p.cb);
+    meterDetach(p);
+    p.meter.el.remove();
+    vw.classList.remove("playing");
+    playHud.classList.add("hidden");
+    tPlay.classList.remove("on");
+    dropping = p;
+    setTimeout(() => dropPlayer(p), 4000);          // segurança: a imagem parada não carregou
+    return t;
+  }
+  function dropPlayer(only) {
+    const p = only || dropping;
+    if (!p) return;
+    if (dropping === p) dropping = null;
+    if (!p.video.isConnected) return;
+    p.video.removeAttribute("src");
+    try { p.video.load(); } catch (e) { /* nada */ }
+    p.video.remove();
+  }
+  /** Pausa e deixa o visor no frame exato onde o vídeo parou. */
+  function stopPlay() {
+    if (!play) return;
+    const t = haltPlay();
+    goFrame(frameAt(R, t));
+  }
+  function togglePlayAll() {
+    if (clipOpen()) { togglePlay(); return; }
+    if (play) stopPlay(); else startPlay();
+  }
+  function playFaster(cycle) {
+    if (!play) { startPlay(); return; }
+    const k = SPEEDS.indexOf(play.rate);
+    play.rate = cycle ? SPEEDS[(k + 1) % SPEEDS.length] : SPEEDS[Math.min(SPEEDS.length - 1, k + 1)];
+    play.video.playbackRate = play.rate;
+    drawPlayHud();
+  }
+  function playBack(sec) {
+    if (!play) { goFrame(cur.frame - Math.round(sec * R.fps)); return; }
+    const t = Math.max(0, play.video.currentTime - sec);
+    play.video.currentTime = t;
+    play.last = frameAt(R, t);
+  }
+  function playSeek(f) {
+    const t = atFrame(Math.max(0, Math.min(M.frames - 1, f)));
+    play.video.currentTime = t;
+    play.last = frameAt(R, t);
+  }
+  function drawPlayHud() {
+    if (!play) { playHud.classList.add("hidden"); return; }
+    playHud.replaceChildren(rvIcon("play"), h("b", { text: `${String(play.rate).replace(".", ",")}×` }),
+      h("span", { text: "Espaço pausa · J volta 5 s · L acelera" + (RV.stopWarn ? " · para nos avisos" : "") }));
+    playHud.classList.remove("hidden");
+  }
+  async function toggleStopWarn() {
+    RV.stopWarn = !RV.stopWarn;
+    tStop.classList.toggle("on", RV.stopWarn);
+    tStop.setAttribute("aria-pressed", RV.stopWarn ? "true" : "false");
+    drawPlayHud();
+    toast(RV.stopWarn ? "Ao assistir, o vídeo pausa sozinho em cada aviso." : "Ao assistir, o vídeo não pausa mais nos avisos.");
+    try { await api("settings", { play_stop_warn: RV.stopWarn }); } catch (e) { /* vale só agora */ }
+  }
 
   // ------------------------------------------------------------------ F, copiar
   function fullscreen() {
@@ -1520,6 +1722,7 @@ async function screenRevisao(root, arg) {
   canvas.addEventListener("click", (e) => {
     const r = canvas.getBoundingClientRect();
     const t = wT(e.clientX - r.left, r.width);
+    if (play) { playSeek(frameAt(R, t)); return; }       // tocando: pula para o ponto e continua
     const snap = Math.max(1, Math.round((wSpan() / r.width) * 4 * R.fps));       // ~4 px (com zoom, fica exato)
     goFrame(frameAt(R, t), snap);
   });
@@ -1576,13 +1779,14 @@ async function screenRevisao(root, arg) {
     const typing = tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT" || (t && t.isContentEditable);
     if (e.key === "Escape") {
       if (typing) { t.blur(); return; }
+      if (play) { stopPlay(); e.preventDefault(); return; }
       if (clipOpen()) { closeClip(); e.preventDefault(); return; }
       if (RV.mode) { setMode(null); e.preventDefault(); return; }
       return;
     }
     if (typing) return;
     if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "c") {
-      if (String(window.getSelection() || "").length) return;      // texto selecionado: cópia normal
+      if (ED || String(window.getSelection() || "").length) return;      // texto selecionado: cópia normal
       e.preventDefault(); copyFrame(); return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1591,21 +1795,29 @@ async function screenRevisao(root, arg) {
       ArrowRight: () => (e.shiftKey ? goFrame(cur.frame + 1) : go(1)),
       ArrowLeft: () => (e.shiftKey ? goFrame(cur.frame - 1) : go(-1)),
       ArrowDown: () => goCut(1), ArrowUp: () => goCut(-1),
-      n: () => nextLesson(), t: () => copyTrello(),
-      c: () => focusComment(), v: () => toggleClip(), g: () => setMode(RV.mode === "graphs" ? null : "graphs"),
-      p: () => setMode(RV.mode === "pick" ? null : "pick"), f: () => fullscreen(),
+      n: () => nextLesson(), t: () => { if (!ED) copyTrello(); },
+      c: () => focusComment(), v: () => toggleClip(), g: () => { if (!ED) setMode(RV.mode === "graphs" ? null : "graphs"); },
+      p: () => { if (!ED) setMode(RV.mode === "pick" ? null : "pick"); }, f: () => fullscreen(),
+      j: () => { if (!clipOpen()) playBack(5); }, k: () => { if (play) stopPlay(); else if (clipOpen() && !clip.video.paused) togglePlay(); },
+      l: () => { if (!clipOpen()) playFaster(false); }, a: () => toggleStopWarn(),
       "+": () => zoomAt(vw.clientWidth / 2, vw.clientHeight / 2, 1.25), "=": () => zoomAt(vw.clientWidth / 2, vw.clientHeight / 2, 1.25),
       "-": () => zoomAt(vw.clientWidth / 2, vw.clientHeight / 2, 0.8), "_": () => zoomAt(vw.clientWidth / 2, vw.clientHeight / 2, 0.8),
-      z: () => toggleZoom(), " ": () => togglePlay(),
+      z: () => toggleZoom(), " ": () => togglePlayAll(),
     };
-    if (key === " " && !clipOpen()) return;
-    if (acts[key]) { e.preventDefault(); acts[key](); }
+    if (acts[key]) {
+      e.preventDefault();
+      // espaço com um botão em foco (depois de clicar nele): sem isso o botão também "clicaria" ao soltar a tecla
+      if (key === " " && t && t.tagName === "BUTTON") t.blur();
+      acts[key]();
+    }
   });
   let rz = null;
   listen(window, "resize", () => { cancelAnimationFrame(rz); rz = requestAnimationFrame(() => { layoutViewer(); drawWaveHead(); drawWave(); }); });
 
   // ------------------------------------------------------------------ começar
   drawStrip();
-  show();
+  const jump = RV.jump && RV.jump.n === V.n ? RV.jump : null;
+  RV.jump = null;
+  if (jump) goFrame(jump.frame, 1); else show();
   requestAnimationFrame(() => { layoutViewer(); drawWaveHead(); drawWave(); drawZoomBar(); });
 }

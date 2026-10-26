@@ -120,9 +120,13 @@ const vlabel = (v) => (/^\d/.test(stem(v.file)) ? stem(v.file) : `${pad(v.n)} ·
 
 // ====================================================================== navegação
 
-const STEPS = [
+const STEPS_REVISOR = [
   ["inicio", "Início"], ["analise", "Análise"], ["resumo", "Resumo"], ["revisao", "Revisão"], ["final", "Resumo final"],
 ];
+// modo editor (pedido do JP, 26/10): o editor confere os próprios vídeos antes de entregar
+const STEPS_EDITOR = [["inicio", "Início"], ["analise", "Análise"], ["revisao", "Checagem"], ["final", "Pronto para enviar"]];
+/** O app está no modo editor (Configurações → Modo do app)? */
+const EDITOR = () => !!(S && S.settings && S.settings.mode === "editor");
 let S = null;          // /api/state
 let poll = null;       // timer da tela atual
 let screenCleanup = null;   // a tela de revisão tira atalhos e timers ao sair
@@ -135,6 +139,7 @@ function route() {
 function drawSteps(active) {
   const nav = $("#steps");
   nav.replaceChildren();
+  const STEPS = EDITOR() ? STEPS_EDITOR : STEPS_REVISOR;
   const idx = STEPS.findIndex((s) => s[0] === active);
   STEPS.forEach(([key, label], i) => {
     const enabled = key === "inicio" || (S && S.review_open);
@@ -176,6 +181,7 @@ async function renderNow() {
     toast(e.message, true);
   }
   drawSteps(r.name === "pacote" ? "final" : r.name);
+  document.body.classList.toggle("editor-mode", EDITOR());
   const screen = $("#screen");
   screen.replaceChildren();
   const fn = SCREENS[r.name] || SCREENS.inicio;
@@ -396,6 +402,7 @@ const F = {               // o que está preenchido na tela de início (fica ao 
 };
 
 async function screenInicio(root) {
+  if (EDITOR()) return screenInicioEditor(root);
   const st = S.settings;
   if (F.sensitivity === null) {
     F.sensitivity = st.sensitivity; F.group_gap_s = st.group_gap_s; F.spell = st.spell; F.transcribe = st.transcribe;
@@ -442,15 +449,20 @@ async function screenInicio(root) {
       sc.videos.filter((v) => v.error).forEach((v) =>
         checks.appendChild(h("div", { class: "bad", title: v.detail || "" }, icon("alert"), `${v.file}: ${v.error}. Fica de fora da análise.`)));
     }
+    const trBtn = (label) => h("button", { class: "btn ghost small", type: "button", text: label,
+      onclick: () => timeReportDialog({ edited: sc.folder, raw: (inf.prev && inf.prev.raw_folder) || "",
+        onDone: () => loadFolder(F.folder) }) });
     if (sc.report) {
       const r = sc.report;
       checks.appendChild(h("div", { class: "ok" }, icon("check"), "Relatório de tempo lido ",
         h("span", { class: "mono faint", style: { fontSize: "12px" }, text: r.file })));
-      checks.appendChild(h("div", { class: "sub",
-        text: `bruto ${fmtHMS(r.total_raw_s)} · editado ${fmtHMS(r.total_edited_s)} · aproveitamento ${fmtPct(r.usage_pct)}` }));
+      checks.appendChild(h("div", { class: "sub" },
+        `bruto ${fmtHMS(r.total_raw_s)} · editado ${fmtHMS(r.total_edited_s)} · aproveitamento ${fmtPct(r.usage_pct)} `,
+        trBtn("Gerar de novo")));
     } else if (sc.ok) {
-      checks.appendChild(h("div", { class: "sub", style: { paddingLeft: 0 },
-        text: "Sem relatório de tempo nesta pasta: a análise roda e gravado/editado ficam vazios." }));
+      checks.appendChild(h("div", { class: "sub tr-none", style: { paddingLeft: 0 } },
+        h("span", { text: "Sem relatório de tempo nesta pasta: a análise roda e gravado/editado ficam vazios." }),
+        trBtn("Gerar relatório de tempo")));
     }
     if (sc.warnings && sc.warnings.length) {
       checks.appendChild(h("div", { class: "notice", style: { marginTop: "6px" } }, icon("alert"),
@@ -526,22 +538,7 @@ async function screenInicio(root) {
     dl("dl-prof", st.history.professores), dl("dl-curso", st.history.cursos), dl("dl-disc", st.history.disciplinas));
 
   // ---- coluna 2: análise
-  const vrow = (label, key) => {
-    const path = st[key];
-    const ok = S.vinhetas_ok[key === "vinheta_in" ? "in" : "out"];
-    return h("div", { class: "v" },
-      h("span", { class: "k", text: label }),
-      h("span", { class: "f" + (ok ? "" : " missing"), title: path || "",
-        text: ok ? path.split(/[\\/]/).pop() : path ? "arquivo não encontrado" : "não escolhida" }),
-      h("button", { class: "btn ghost small", text: path ? "Trocar" : "Escolher",
-        "aria-label": `${path ? "Trocar" : "Escolher"} a vinheta ${label.toLowerCase()}`,
-        onclick: () => choose("file", `Escolha o arquivo da vinheta ${label.toLowerCase()}`,
-          path ? path.replace(/[\\/][^\\/]*$/, "") : st.last_folder,
-          async (p) => {
-            try { await api("settings", { [key]: p }); toast("Vinheta salva."); render(); }
-            catch (e) { toast(e.message, true); }
-          }) }));
-  };
+  const vrow = vinhetaRow;
   const sens = h("input", { id: "sens", type: "range", min: "0", max: "100", value: String(F.sensitivity) });
   sens.addEventListener("input", () => { F.sensitivity = Number(sens.value); });
   const grp = h("select", { id: "grupo", class: "input" },
@@ -655,6 +652,245 @@ async function screenInicio(root) {
   if (F.folder) loadFolder(F.folder);   // relê: a revisão pode ter sido salva desde a última vez
 }
 
+// ---------------------------------------------------------------------- Início no modo editor
+// Mais simples: pasta dos editados, pasta dos brutos (para o relatório de tempo no fim), professor e
+// nome na tarja. A entrega é o dia da checagem; sensibilidade e listas usam o padrão das configurações.
+
+const FE = { folder: "", info: null, raw: "", professor: "", nome_tarja: "", spell: null, transcribe: null };
+
+async function screenInicioEditor(root) {
+  const st = S.settings;
+  if (FE.spell === null) { FE.spell = st.spell; FE.transcribe = st.transcribe; }
+  const qs = S.queue || {};
+  if (qs.running && FE.info && FE.info.scan.ok && FE.info.scan.name === qs.running) {
+    Object.assign(FE, { folder: "", info: null, raw: "", professor: "", nome_tarja: "" });
+  }
+  const folderIn = h("input", { id: "pasta", class: "input mono", value: FE.folder,
+    placeholder: "Escolha ou cole o caminho da pasta", autocomplete: "off" });
+  const rawIn = h("input", { id: "brutos", class: "input mono", value: FE.raw,
+    placeholder: "Pasta com as gravações (brutos)", autocomplete: "off" });
+  const checks = h("div", { class: "checks", "aria-live": "polite" });
+  const prof = h("input", { id: "prof", class: "input", value: FE.professor, list: "dl-prof", autocomplete: "off" });
+  const tag = h("input", { id: "tarja", class: "input", value: FE.nome_tarja, autocomplete: "off",
+    placeholder: "Como o professor quer o nome na tarja" });
+  [[prof, "professor"], [tag, "nome_tarja"], [rawIn, "raw"]].forEach(([el, k]) => el.addEventListener("input", () => { FE[k] = el.value; }));
+  prof.addEventListener("change", () => { if (!tag.value.trim() && prof.value.trim()) { tag.value = prof.value.trim(); FE.nome_tarja = tag.value; } });
+
+  function drawChecks() {
+    checks.replaceChildren();
+    const inf = FE.info;
+    if (!inf) return;
+    const sc = inf.scan;
+    if (sc.error) { checks.appendChild(h("div", { class: "bad" }, icon("alert"), sc.error)); return; }
+    checks.appendChild(h("div", { class: "ok" }, icon("check"), `${plural(sc.count, "vídeo", "vídeos")} · ${fmtLong(sc.total_s)} no total`));
+    sc.videos.filter((v) => v.error).forEach((v) =>
+      checks.appendChild(h("div", { class: "bad", title: v.detail || "" }, icon("alert"), `${v.file}: ${v.error}. Fica de fora da análise.`)));
+    if (sc.report) {
+      checks.appendChild(h("div", { class: "ok" }, icon("check"), "Já tem relatório de tempo ",
+        h("span", { class: "mono faint", style: { fontSize: "12px" }, text: sc.report.file })));
+    }
+    if (inf.prev) {
+      checks.appendChild(h("div", { class: "notice info", style: { marginTop: "6px" } }, icon("info"),
+        h("span", { text: `Esta pasta já foi conferida (em ${fmtUpdated(inf.prev.updated)}). Analisar de novo continua de onde parou.` })));
+    }
+  }
+  async function loadFolder(path, fromPicker) {
+    path = (path || "").trim();
+    if (!path) return;
+    FE.folder = path; folderIn.value = path;
+    checks.replaceChildren(h("div", { class: "faint", text: "Lendo a pasta…" }));
+    try {
+      const inf = await api("folder?path=" + encodeURIComponent(path));
+      const changed = !FE.info || FE.info.scan.folder !== inf.scan.folder;
+      FE.info = inf;
+      if (inf.scan.ok && (changed || fromPicker)) {
+        const sg = inf.suggest;
+        FE.professor = sg.professor || ""; FE.nome_tarja = sg.nome_tarja || sg.professor || "";
+        if (inf.prev && inf.prev.raw_folder) FE.raw = inf.prev.raw_folder;
+        prof.value = FE.professor; tag.value = FE.nome_tarja; rawIn.value = FE.raw;
+      }
+      drawChecks(); drawGo();
+    } catch (e) {
+      FE.info = null;
+      checks.replaceChildren(h("div", { class: "bad" }, icon("alert"), e.message));
+    }
+  }
+  folderIn.addEventListener("change", () => loadFolder(folderIn.value));
+  folderIn.addEventListener("keydown", (e) => { if (e.key === "Enter") loadFolder(folderIn.value); });
+
+  const sameRunning = () => !!(qs.running && FE.info && FE.info.scan.ok && FE.info.scan.name === qs.running);
+  const busyOther = () => !!qs.running && !sameRunning();
+  const go = h("button", { class: "btn primary", onclick: () => start() });
+  const goHint = h("span", { class: "hint", style: { textAlign: "center" } });
+  function drawGo() {
+    go.textContent = sameRunning() ? "Ver a análise" : busyOther() ? "Adicionar à fila" : "Conferir os vídeos";
+    goHint.textContent = sameRunning() ? "Esta pasta já está sendo analisada agora."
+      : busyOther() ? `A análise de “${qs.running}” continua. Esta pasta entra na fila e é analisada logo depois.`
+        : "A análise roda em segundo plano. Você começa a conferir assim que o primeiro vídeo ficar pronto.";
+  }
+  async function start() {
+    if (sameRunning()) { location.hash = "#/analise"; return; }
+    if (!FE.info || !FE.info.scan.ok) {
+      if (folderIn.value.trim()) await loadFolder(folderIn.value);
+      if (!FE.info || !FE.info.scan.ok) { toast("Escolha a pasta com os vídeos editados.", true); folderIn.focus(); return; }
+    }
+    if (!prof.value.trim()) { toast("Preencha o professor.", true); prof.focus(); return; }
+    go.disabled = true; go.textContent = "Começando…";
+    try {
+      const r = await api("start", {
+        folder: FE.info.scan.folder, professor: prof.value, nome_tarja: tag.value, raw_folder: rawIn.value.trim(),
+        curso: (FE.info.prev && FE.info.prev.curso) || "", disciplina: (FE.info.prev && FE.info.prev.disciplina) || "",
+        sensitivity: st.sensitivity, group_gap_s: st.group_gap_s, spell: FE.spell, transcribe: FE.transcribe,
+      });
+      if (r.queued) {
+        toast(`“${r.project}” entrou na fila. Pode escolher outra pasta.`);
+        Object.assign(FE, { folder: "", info: null, raw: "", professor: "", nome_tarja: "" });
+        render();
+        return;
+      }
+      location.hash = "#/analise";
+    } catch (e) { toast(e.message, true); go.disabled = false; drawGo(); }
+  }
+
+  const spell = h("input", { type: "checkbox", checked: FE.spell ? true : null });
+  spell.addEventListener("change", () => { FE.spell = spell.checked; });
+  const talk = h("input", { type: "checkbox", checked: FE.transcribe ? true : null });
+  talk.addEventListener("change", () => { FE.transcribe = talk.checked; });
+
+  const colA = h("div", { class: "col" },
+    h("span", { class: "caps", text: "Vídeos para conferir" }),
+    h("div", { class: "field" }, h("label", { for: "pasta", text: "Pasta dos vídeos editados" }),
+      h("div", { class: "row" }, folderIn, h("button", { class: "btn", text: "Escolher pasta",
+        onclick: () => choose("folder", "Escolha a pasta com os vídeos editados", FE.folder || st.last_folder, (p) => loadFolder(p, true)) })),
+      checks),
+    h("div", { class: "field" },
+      h("label", { for: "brutos" }, "Pasta dos brutos ", h("span", { class: "opt", text: "(para o relatório de tempo)" })),
+      h("div", { class: "row" }, rawIn, h("button", { class: "btn", text: "Escolher pasta",
+        onclick: () => choose("folder", "Escolha a pasta dos BRUTOS (gravação)", FE.raw || st.last_raw_folder || FE.folder,
+          (p) => { FE.raw = p; rawIn.value = p; }) })),
+      h("span", { class: "hint", text: "No fim, o app gera o txt de tempo (bruto × editado) na pasta dos editados. Dá para escolher depois." })),
+    h("div", { class: "row", style: { gap: "14px", alignItems: "flex-start" } },
+      h("div", { class: "field", style: { flex: 1 } }, h("label", { for: "prof", text: "Professor" }), prof),
+      h("div", { class: "field", style: { flex: 1 } }, h("label", { for: "tarja", text: "Nome na tarja" }), tag)),
+    h("span", { class: "hint", style: { marginTop: "-10px" }, text: "A tarja de cada vídeo é comparada com este nome." }),
+    h("datalist", { id: "dl-prof" }, (st.history.professores || []).map((v) => h("option", { value: v }))));
+
+  const colB = h("div", { class: "col" },
+    h("span", { class: "caps", text: "Análise" }),
+    h("div", { class: "field" }, h("span", { class: "label", text: "Vinhetas de referência" }),
+      h("div", { class: "vinhetas" }, vinhetaRow("Inicial", "vinheta_in"), vinhetaRow("Final", "vinheta_out")),
+      h("span", { class: "hint", text: "Salvas uma vez. O app usa os arquivos para achar as vinhetas em cada vídeo." })),
+    h("div", { class: "field", style: { gap: "6px" } }, h("label", { class: "check" }, spell, "Conferir a ortografia do texto na tela")),
+    h("div", { class: "field", style: { gap: "6px" } }, h("label", { class: "check" }, talk, "Ouvir as falas"),
+      h("span", { class: "hint", style: { paddingLeft: "30px" }, text: "Procura “errei”, “retomando” e takes repetidos que ficaram. Deixa a análise mais demorada." })),
+    go, goHint);
+
+  const noName = !(st.my_name || "").trim() ? h("div", { class: "notice info" }, icon("info"),
+    h("span", { style: { flex: 1 } }, "Escreva o seu nome em ", h("a", { href: "#/config/modo", text: "Configurações → Modo do app" }),
+      ": as horas dos vídeos que você conferir entram com ele no relatório do mês.")) : null;
+  const qBox = h("div", { class: "start-q" });
+  root.appendChild(h("div", { class: "screen-center" }, h("div", { class: "start-wrap" }, noName,
+    h("section", { class: "panel start" },
+      h("div", { class: "start-head" },
+        h("div", {}, h("h1", { text: "Conferir antes de entregar" }),
+          h("p", { text: "O app procura tarja errada, erro de ortografia, vinheta cortada, transição do slide, áudio e falas que ficaram. " +
+            "Você corrige antes de mandar a pasta." })),
+        h("span", { class: "mode-pill", title: "Modo editor (troque em Configurações → Modo do app)", text: "Modo editor" })),
+      h("div", { class: "cols" }, colA, h("div", { class: "vline" }), colB)),
+    qBox)));
+  drawGo();
+  try {
+    const q = await api("queue");
+    const others = q.entries.length > 1 || (q.entries.length === 1 && !q.entries[0].open);
+    qBox.replaceChildren(restoreNotice(q, () => render()), others ? queueCard(q, () => render()) : null);
+  } catch (e) { /* sem fila */ }
+  if (FE.folder) loadFolder(FE.folder);
+}
+
+/** Linha de uma vinheta de referência (Início): nome do arquivo e "Trocar". */
+function vinhetaRow(label, key) {
+  const st = S.settings;
+  const path = st[key];
+  const ok = S.vinhetas_ok[key === "vinheta_in" ? "in" : "out"];
+  return h("div", { class: "v" },
+    h("span", { class: "k", text: label }),
+    h("span", { class: "f" + (ok ? "" : " missing"), title: path || "",
+      text: ok ? path.split(/[\\/]/).pop() : path ? "arquivo não encontrado" : "não escolhida" }),
+    h("button", { class: "btn ghost small", text: path ? "Trocar" : "Escolher",
+      "aria-label": `${path ? "Trocar" : "Escolher"} a vinheta ${label.toLowerCase()}`,
+      onclick: () => choose("file", `Escolha o arquivo da vinheta ${label.toLowerCase()}`,
+        path ? path.replace(/[\\/][^\\/]*$/, "") : st.last_folder,
+        async (p) => {
+          try { await api("settings", { [key]: p }); toast("Vinheta salva."); render(); }
+          catch (e) { toast(e.message, true); }
+        }) }));
+}
+
+// ====================================================================== relatório de tempo (feito pelo app)
+// Faz o mesmo txt do "Calculo de tempo.command" (bruto × editado), salvo na pasta dos editados.
+// opts: {edited, raw, onDone(resultado)}
+
+function timeReportDialog(opts) {
+  const st = Object.assign({ raw: "", edited: "", result: null, busy: false }, opts || {});
+  if (!st.raw && S && S.settings) st.raw = S.settings.last_raw_folder || "";
+  const draw = () => {
+    const pickRow = (label, key, prompt, hint) => {
+      const inp = h("input", { class: "input mono", value: st[key], placeholder: "Escolha ou cole o caminho da pasta",
+        "aria-label": label, autocomplete: "off" });
+      inp.addEventListener("input", () => { st[key] = inp.value; st.result = null; });
+      return h("div", { class: "field" }, h("span", { class: "label", text: label }),
+        h("div", { class: "row" }, inp, h("button", { class: "btn", type: "button", text: "Escolher", onclick: async () => {
+          const start = st[key] || (key === "raw" ? (S.settings.last_raw_folder || st.edited) : st.edited) || S.settings.last_folder;
+          let picked = false;
+          await choose("folder", prompt, start, (p) => { picked = true; st[key] = p; st.result = null; draw(); });
+          if (!picked && !$("#modal-root").childElementCount) draw();      // cancelou a janela do sistema
+        } })),
+        hint ? h("span", { class: "hint", text: hint }) : null);
+    };
+    const r = st.result;
+    const body = [
+      h("p", { class: "muted", style: { margin: 0, fontSize: "13px" },
+        text: "Faz o mesmo txt do “Calculo de tempo”: soma os brutos (com as subpastas) e os editados (só a pasta), " +
+              "deixa de fora os arquivos terminados em -D e -E e salva o txt na pasta dos editados." }),
+      pickRow("Pasta dos brutos (gravação)", "raw", "Escolha a pasta dos BRUTOS (gravação)", null),
+      pickRow("Pasta dos editados (líquido)", "edited", "Escolha a pasta dos EDITADOS (os vídeos que vão ser entregues)", null),
+    ];
+    if (r) {
+      const s = r.summary;
+      body.push(h("div", { class: "card tr-res" },
+        h("div", { class: "kv" }, h("span", { text: "Gravado (bruto)" }), h("span", { class: "mono", text: fmtHMS(r.report.total_raw_s) })),
+        h("div", { class: "kv" }, h("span", { text: "Editado (líquido)" }), h("span", { class: "mono", text: fmtHMS(r.report.total_edited_s) })),
+        h("div", { class: "kv" }, h("span", { text: "Descartado" }), h("span", { class: "mono", text: fmtHMS(r.report.discarded_s) })),
+        h("div", { class: "kv total" }, h("span", { text: "Aproveitamento" }),
+          h("span", { class: "mono", style: { color: "var(--accent-text)" }, text: fmtPct(r.report.usage_pct) })),
+        h("span", { class: "hint", text: `${plural(s.raw_files, "bruto", "brutos")} e ${plural(s.edited_files, "editado", "editados")} somados` +
+          (s.ignored_raw || s.ignored_edited ? ` · ${s.ignored_raw + s.ignored_edited} terminados em -D ou -E ficaram de fora` : "") + "." })),
+        (s.raw_failed.length || s.edited_failed.length) ? h("div", { class: "notice" }, icon("alert"),
+          h("span", { text: `Não consegui ler: ${s.raw_failed.concat(s.edited_failed).join(", ")}. Esses arquivos não entraram na soma.` })) : null,
+        h("div", { class: "notice info" }, icon("check"), h("span", {},
+          r.in_folder ? "Salvo na pasta dos editados: " : "Não deu para salvar na pasta dos editados. Salvo em: ",
+          h("span", { class: "mono", text: r.in_folder ? r.file : `${r.saved_in} · ${r.file}` }))),
+        h("details", { class: "tr-det" }, h("summary", { text: "Ver o txt" }), h("pre", { class: "tr-pre mono", text: r.text })));
+    }
+    const goBtn = h("button", { class: "btn primary", type: "button", style: { height: "42px", fontSize: "14px" },
+      text: st.busy ? "Lendo os vídeos…" : r ? "Gerar de novo" : "Gerar relatório de tempo", disabled: st.busy ? true : null,
+      onclick: async () => {
+        if (!st.raw.trim()) { toast("Escolha a pasta dos brutos.", true); return; }
+        if (!st.edited.trim()) { toast("Escolha a pasta dos editados.", true); return; }
+        st.busy = true; draw();
+        try {
+          st.result = await api("timereport", { raw: st.raw, edited: st.edited });
+          toast(`Relatório de tempo salvo: ${st.result.file}`);
+          if (st.onDone) st.onDone(st.result);
+        } catch (e) { toast(e.message, true); }
+        st.busy = false; draw();
+      } });
+    openModal("Relatório de tempo", body,
+      [h("button", { class: "btn ghost", type: "button", text: r ? "Fechar" : "Cancelar", onclick: closeModal }), goBtn], true);
+  };
+  draw();
+}
+
 async function savedDialog() {
   let d;
   try { d = await api("reviews"); } catch (e) { return toast(e.message, true); }
@@ -713,7 +949,7 @@ async function screenAnalise(root) {
   const rv = view.review;
   const head = h("div", {}, h("h1", { text: "Analisando os vídeos" }),
     h("p", { text: `${[rv.professor, rv.curso, rv.disciplina].filter(Boolean).join(" · ")}. ` +
-      "Você pode revisar os vídeos prontos enquanto o resto continua." }));
+      (EDITOR() ? "Você pode conferir os vídeos prontos enquanto o resto continua." : "Você pode revisar os vídeos prontos enquanto o resto continua.") }));
   const rows = h("div");
   const prog = h("div", { class: "card" });
   const rep = h("div", { class: "card" });
@@ -795,7 +1031,8 @@ async function screenAnalise(root) {
     }
     if (j.state === "none") {
       prog.replaceChildren(h("span", { class: "muted", text: "Nenhuma análise rodando." }));
-      btnMain.textContent = "Ver resumo geral"; btnMain.onclick = () => (location.hash = "#/resumo");
+      btnMain.textContent = EDITOR() ? "Ver o que falta" : "Ver resumo geral";
+      btnMain.onclick = () => (location.hash = EDITOR() ? "#/final" : "#/resumo");
       btnPause.classList.add("hidden");
       return;
     }
@@ -837,17 +1074,18 @@ async function screenAnalise(root) {
         text: `Falas: ${j.speech_engine.gpu ? "na" : "no"} ${j.speech_engine.text}` + (j.speech_engine.problem ? " · a placa de vídeo não funcionou" : "") }) : null);
     const firstReady = j.videos.find((v) => v.status === "ok");
     if (finished) {
-      btnMain.textContent = "Ver resumo geral";
+      btnMain.textContent = EDITOR() ? "Ver o que falta" : "Ver resumo geral";
       btnMain.disabled = false;
-      btnMain.onclick = () => (location.hash = "#/resumo");
-      btnPause.textContent = j.state === "cancelled" ? "Analisar o que faltou" : "Revisar o vídeo 01";
+      btnMain.onclick = () => (location.hash = EDITOR() ? "#/final" : "#/resumo");
+      btnPause.textContent = j.state === "cancelled" ? "Analisar o que faltou" : EDITOR() ? "Conferir o vídeo 01" : "Revisar o vídeo 01";
       btnPause.onclick = j.state === "cancelled" ? () => (location.hash = "#/inicio") : () => (location.hash = "#/revisao/1");
       btnPause.classList.remove("hidden");
       // com outras pastas na fila, continua atualizando a lista da fila (mais devagar)
       const q2 = q || { entries: [] };
       if (!q2.entries.some((e) => ["wait", "running", "paused"].includes(e.status))) { clearInterval(poll); poll = null; }
     } else {
-      btnMain.textContent = firstReady ? `Revisar o vídeo ${pad(firstReady.n)} enquanto analisa` : "Revisar enquanto analisa";
+      btnMain.textContent = firstReady ? `${EDITOR() ? "Conferir" : "Revisar"} o vídeo ${pad(firstReady.n)} enquanto analisa`
+        : EDITOR() ? "Conferir enquanto analisa" : "Revisar enquanto analisa";
       btnMain.disabled = !firstReady;
       btnMain.onclick = () => firstReady && (location.hash = `#/revisao/${firstReady.n}`);
       btnPause.textContent = j.state === "paused" ? "Continuar análise" : "Pausar análise";
@@ -899,6 +1137,7 @@ function scopeOverlay(scope) {
 }
 
 async function screenResumo(root) {
+  if (EDITOR()) { location.hash = "#/final"; return; }      // o editor vai direto ao "Pronto para enviar"
   const view = await api("review");
   if (!view.review) { location.hash = "#/inicio"; return; }
   const rv = view.review;
@@ -1013,7 +1252,7 @@ const SCREENS = {
   analise: screenAnalise,
   resumo: screenResumo,
   revisao: screenRevisao,
-  final: screenFinal,
+  final: (root, arg) => (EDITOR() ? screenEnviar(root, arg) : screenFinal(root, arg)),
   pacote: screenPacote,
   relatorio: screenRelatorio,
   config: screenConfig,

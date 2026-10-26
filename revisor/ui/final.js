@@ -212,6 +212,91 @@ async function screenFinal(root) {
   drawList();
 }
 
+// ====================================================================== modo editor · Pronto para enviar
+// O editor vê o que ainda falta olhar em cada vídeo, gera o relatório de tempo e confere as horas.
+
+async function screenEnviar(root) {
+  const view = await api("review");
+  if (!view.review) { location.hash = "#/inicio"; return; }
+  const rv = view.review;
+  const vids = view.videos;
+  let F5 = null;
+  try { F5 = await api("final"); } catch (e) { /* horas ficam de fora */ }
+  const job = view.job;
+  const running = job && ["running", "paused", "idle"].includes(job.state);
+  const pending = vids.filter((v) => v.row).reduce((n, v) => n + v.row.warnings.length, 0);
+  const waiting = vids.filter((v) => !v.row && !v.missing).length;
+  const ignored = vids.reduce((n, v) => n + (v.ignored || 0), 0);
+
+  // ---- lista: cada vídeo com os avisos que ainda faltam (clicar abre o vídeo no aviso)
+  const list = h("div", { class: "panel en-list" }, vids.map((v) => {
+    const w = v.row ? v.row.warnings : [];
+    const state = !v.row ? (v.missing ? "vídeo não está na pasta" : "ainda analisando…")
+      : w.length ? plural(w.length, "aviso para olhar", "avisos para olhar") : "tudo certo";
+    return h("div", { class: "en-v" + (v.row && !w.length ? " ok" : "") },
+      h("div", { class: "en-vh" },
+        h("a", { class: "en-name", href: `#/revisao/${v.n}`, title: v.file, text: vlabel(v) }),
+        h("span", { class: "en-st", text: state }),
+        v.ignored ? h("span", { class: "faint en-ig", text: `${plural(v.ignored, "ignorado", "ignorados")}` }) : null),
+      w.length ? h("div", { class: "en-ws" }, w.map((x) => h("button", { class: "en-w", type: "button",
+        title: "Abrir o vídeo neste aviso", onclick: () => { RV.jump = { n: v.n, frame: x.frame }; location.hash = `#/revisao/${v.n}`; } },
+        h("span", { class: "mono faint", text: x.tc }), h("span", { class: "en-k", text: x.label }),
+        x.note ? h("span", { class: "en-note", text: x.note }) : null))) : null);
+  }));
+
+  // ---- situação geral
+  const allOk = !running && !waiting && !pending;
+  const head = allOk
+    ? h("div", { class: "notice info en-big" }, icon("check"), h("span", {}, h("b", { text: "Tudo conferido." }),
+        ignored ? ` ${plural(ignored, "aviso foi ignorado", "avisos foram ignorados")} (você decidiu que não era erro).` : "",
+        " Pode enviar a pasta."))
+    : h("div", { class: "notice en-big" }, icon("alert"), h("span", {},
+        pending ? h("b", { text: `Falta olhar ${plural(pending, "aviso", "avisos")}.` }) : null,
+        waiting ? ` ${plural(waiting, "vídeo ainda está", "vídeos ainda estão")} na análise.` : "",
+        " Corrija no Premiere e exporte com o mesmo nome (o app percebe e analisa de novo), ou use “Ignorar” quando não for erro."));
+
+  // ---- relatório de tempo
+  const r = rv.report;
+  const trCard = h("div", { class: "card f-card" },
+    h("span", { class: "caps", text: "Relatório de tempo" }),
+    r ? [h("div", { class: "f-kv sm" }, h("span", { class: "t3", text: "Gravado (bruto)" }), h("span", { class: "mono", text: fmtHMS(r.total_raw_s) })),
+         h("div", { class: "f-kv sm" }, h("span", { class: "t3", text: "Editado" }), h("span", { class: "mono", text: fmtHMS(r.total_edited_s) })),
+         h("div", { class: "f-kv sm" }, h("span", { class: "t3", text: "Aproveitamento" }),
+           h("span", { class: "mono", style: { color: "var(--accent-text)" }, text: fmtPct(r.usage_pct) })),
+         h("span", { class: "hint mono", text: r.file })]
+      : h("span", { class: "hint", text: "Ainda não há o txt de tempo nesta pasta. Gere aqui: ele fica na pasta dos editados, como o do “Calculo de tempo”." }),
+    h("button", { class: r ? "btn" : "btn primary", type: "button", text: r ? "Gerar de novo" : "Gerar relatório de tempo",
+      onclick: () => timeReportDialog({ edited: rv.folder || "", raw: rv.raw_folder || "", onDone: () => render() }) }),
+    (rv.folder_warnings || []).length ? h("div", { class: "notice", style: { fontSize: "12px" } }, icon("alert"),
+      h("div", {}, h("span", { text: "Conferir:" }), h("ul", {}, rv.folder_warnings.map((x) => h("li", { text: x }))))) : null);
+
+  // ---- horas (o editor também vê as próprias horas)
+  const H = F5 && F5.hours;
+  const hoursCard = H ? h("div", { class: "card f-card" },
+    h("span", { class: "caps", text: "Horas de vídeo editado" }),
+    H.editors.map((g) => h("div", { class: "f-kv" + (g.none ? " warn" : "") },
+      h("span", {}, g.none ? "Sem nome" : g.name, h("span", { class: "muted f-small", text: ` · ${plural(g.videos.length, "vídeo", "vídeos")}` })),
+      h("span", { class: "mono", text: fmtHm(g.seconds) }))),
+    H.without_editor ? h("span", { class: "hint warn" }, "Escreva o seu nome em ", h("a", { href: "#/config/modo", text: "Configurações → Modo do app" }),
+      " e confira a pasta de novo para as horas irem com o seu nome.") : null,
+    h("div", { class: "f-kv sm sep-t" }, h("span", { class: "t3", text: "Total desta pasta" }), h("span", { class: "mono", text: fmtHMS(H.total_s) })),
+    h("a", { class: "btn ghost small", href: "#/relatorio", text: "Ver o mês todo" })) : null;
+
+  root.appendChild(h("div", { class: "final" },
+    h("section", {},
+      h("div", { class: "page-title" }, h("h1", { text: "Pronto para enviar?" }),
+        h("p", { text: [rv.professor ? `Prof. ${rv.professor}` : rv.project, plural(vids.length, "vídeo", "vídeos"),
+          running ? "a análise continua" : null].filter(Boolean).join(" · ") })),
+      head, list),
+    h("aside", { class: "final-side" }, trCard, hoursCard, h("div", { style: { flex: 1 } }),
+      h("a", { class: "btn linkish", href: "#/revisao/1", text: "← Voltar à checagem" }))));
+
+  if (running) poll = setInterval(async () => {
+    try { const j = await api("job"); if (j.videos.filter((v) => v.status === "ok").length !== vids.filter((v) => v.row).length || j.state === "done") render(); }
+    catch (e) { /* tenta de novo */ }
+  }, 3000);
+}
+
 // ====================================================================== 6 · Levar a revisão para outro computador
 
 const PK = { dest: "", path: "", videos_folder: "", info: null, choice: null };
@@ -430,8 +515,9 @@ async function screenRelatorio(root) {
 
 // ====================================================================== Configurações
 
-const CFG_SECTIONS = [["cache", "Cache"], ["pastas", "Pastas"], ["analise", "Análise"], ["equipe", "Equipe"],
+const CFG_SECTIONS = [["modo", "Modo do app"], ["cache", "Cache"], ["pastas", "Pastas"], ["analise", "Análise"], ["equipe", "Equipe"],
   ["copia", "Cópia e envio ao editor"], ["ortografia", "Ortografia e dicionário"]];
+const CFG_SECTIONS_EDITOR = ["modo", "cache", "pastas", "analise", "ortografia"];   // o editor não usa Equipe nem Cópia
 
 async function screenConfig(root, arg) {
   const C = await api("settings/all");
@@ -454,6 +540,24 @@ async function screenConfig(root, arg) {
   };
   const line = (label, hint, ctl, forId) => h("div", { class: "cfg-line" },
     h("div", { class: "l" }, h("label", { for: forId || null, text: label }), hint ? h("span", { class: "hint", text: hint }) : null), ctl);
+
+  // ---- Modo do app (pedido do JP, 26/10): revisor (completo) ou editor (conferir antes de entregar)
+  const modeOpt = (val, title, desc) => {
+    const r = h("input", { type: "radio", name: "cfg-mode", value: val, checked: st.mode === val ? true : null });
+    r.addEventListener("change", async () => {
+      if (await save({ mode: val }, val === "editor" ? "Modo editor ligado." : "Modo revisor ligado.")) { await render(); }
+    });
+    return h("label", { class: "cfg-mode" + (st.mode === val ? " on" : "") }, r,
+      h("span", {}, h("b", { text: title }), h("span", { class: "hint", text: desc })));
+  };
+  const myName = h("input", { id: "cfg-myname", class: "input cfg-sel", value: st.my_name || "", maxlength: "40", autocomplete: "off",
+    placeholder: "Seu nome" });
+  myName.addEventListener("change", () => save({ my_name: myName.value }, "Nome salvo."));
+  const sModo = sec("modo", h2("Modo do app", "O mesmo app serve para quem revisa e para o editor conferir os próprios vídeos antes de entregar."),
+    h("div", { class: "cfg-modes" },
+      modeOpt("revisor", "Revisor", "Tudo: comentários, SRT, Trello, equipe, relatório do mês e pacote para outro computador."),
+      modeOpt("editor", "Editor", "Mais simples: só os avisos de cada vídeo para corrigir antes de mandar, o relatório de tempo e as suas horas.")),
+    st.mode === "editor" ? line("Seu nome", "Os vídeos que você conferir ficam com este nome no relatório do mês.", myName, "cfg-myname") : null);
 
   // ---- Cache
   const cacheBox = h("div", { class: "cfg-cache" });
@@ -635,7 +739,9 @@ async function screenConfig(root, arg) {
     h("span", { class: "hint", text: "Ao tocar em “Aceitar” num aviso da revisão, a palavra entra nesta lista automaticamente. A lista vale para todos os cursos." }));
 
   // ---- navegação lateral
-  const nav = h("nav", { class: "cfg-nav", "aria-label": "Seções" }, CFG_SECTIONS.map(([id, label]) =>
+  const editorMode = st.mode === "editor";
+  const secs = CFG_SECTIONS.filter(([id]) => !editorMode || CFG_SECTIONS_EDITOR.includes(id));
+  const nav = h("nav", { class: "cfg-nav", "aria-label": "Seções" }, secs.map(([id, label]) =>
     h("button", { "data-sec": id, text: label, onclick: () => {
       const el = document.getElementById("cfg-" + id);
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -645,9 +751,10 @@ async function screenConfig(root, arg) {
     // versão do app: para conferir se é a mesma da página de versões no GitHub
     h("span", { class: "cfg-ver faint", text: `Revisor de Vídeos ${S && S.version ? S.version : ""}` }));
   function setActive(id) { nav.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.sec === id)); }
-  const body = h("div", { class: "cfg-body" }, sCache, sPastas, sAnalise, sEquipe, sCopia, sOrto);
+  const body = h("div", { class: "cfg-body" }, sModo, sCache, sPastas, sAnalise,
+    editorMode ? null : sEquipe, editorMode ? null : sCopia, sOrto);
   root.appendChild(h("div", { class: "cfg" }, nav, body));
-  setActive(arg || "cache");
+  setActive(arg || "modo");
   if (arg && document.getElementById("cfg-" + arg)) document.getElementById("cfg-" + arg).scrollIntoView({ block: "start" });
   const obs = new IntersectionObserver((es) => {
     const vis = es.filter((e) => e.isIntersecting).sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top)[0];

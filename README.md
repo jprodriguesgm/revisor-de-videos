@@ -106,6 +106,10 @@ Configurações, cache e revisões salvas ficam em
     python3 tools/ui_smoke.py <pasta das aulas> tools/testdata/vinheta_inicio.mp4 \
         tools/testdata/vinheta_final.mp4 <pasta das capturas>
 
+    # relatório de tempo, assistir ao vídeo inteiro e modo editor (aulas em AV1/VP9 + Opus: ver o docstring):
+    python3 tools/ui_editor.py <pasta das aulas> <pasta dos brutos> tools/testdata/vinheta_inicio.mp4 \
+        tools/testdata/vinheta_final.mp4 <pasta das capturas>
+
     # etapa 2 sozinha, em análises que já estão no cache:
     python3 tools/text_only.py cache [-v] [--nome "Nome"] [--so-checar] [trecho do nome do vídeo]
 

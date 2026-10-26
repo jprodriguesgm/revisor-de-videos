@@ -45,7 +45,11 @@ DEFAULTS = {
     "spell_la": True,                # latim na ortografia
     "nav_slides": False,             # revisão: ← → passam também por cada slide em tela cheia
     "clip_half_s": 4.0,              # revisão: trecho (V) com N s antes e N s depois do frame
+    "play_stop_warn": False,         # revisão: o play do vídeo inteiro (Espaço) para sozinho em cada aviso
     "last_folder": None,
+    "last_raw_folder": None,         # última pasta de brutos do relatório de tempo
+    "mode": "revisor",               # revisor (completo) | editor (simples: o editor confere antes de entregar)
+    "my_name": "",                   # modo editor: nome de quem usa este computador (vira o editor dos vídeos)
     "tag_names": {},                 # professor → nome usado na tarja
     "history": {"professores": [], "cursos": [], "disciplinas": []},
     "error_phrases": list(speech.ERROR_PHRASES_DEFAULT),

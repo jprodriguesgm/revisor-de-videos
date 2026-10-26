@@ -6,10 +6,19 @@ ortografia, tarja com o nome do professor, transições de slide, vinhetas e fal
 
 Tudo roda no seu computador: **nenhum vídeo, frame ou comentário sai dele**.
 
+**Novidades da versão 1.1.0**
+- **Assistir ao vídeo inteiro** (Espaço): o vídeo toca no próprio visor, com o zoom e o medidor de áudio;
+  J volta 5 s, K pausa, L acelera, e **Parar nos avisos** (A) pausa sozinho em cada aviso
+  ([seção 7](#7-tela-de-revisão-todas-as-funções)).
+- **Relatório de tempo feito pelo app:** o mesmo txt do "Calculo de tempo" (bruto × editado), agora também
+  no Windows ([passo 1](#passo-1--início-escolher-a-pasta)).
+- **Modo editor:** o editor confere os próprios vídeos antes de entregar, no mesmo app
+  ([seção 4](#4-modo-editor-conferir-antes-de-entregar)).
+
 **Novidades da versão 1.0.2**
 - **Copiar para o Trello** (tecla T): uma imagem só, com o que está na tela e o comentário escrito embaixo.
 - **Conferir correções** do vídeo que voltou: imagem de como estava × vídeo novo, corrigido / não corrigido
-  ([seção 5](#5-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo)).
+  ([seção 6](#6-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo)).
 - Avisos novos: **frame solto entre cortes**, **frame preto**, **tela preta** e **vinheta sem fundo**.
 - **Situação do vídeo** (aprovado / volta para o editor) e **tipo de cada correção** (etiquetas), com
   "Revisão por editor" no relatório do mês.
@@ -23,16 +32,17 @@ Na primeira abertura da 1.0.2, cada pasta é analisada de novo uma vez (os aviso
 1. [Baixar e instalar](#1-baixar-e-instalar)
 2. [Primeira vez: equipe e vinhetas](#2-primeira-vez-equipe-e-vinhetas)
 3. [O essencial: o dia a dia em 5 passos](#3-o-essencial-o-dia-a-dia-em-5-passos)
-4. [Fila de pastas](#4-fila-de-pastas)
-5. [Vídeo que voltou para a 2ª revisão (analisar de novo)](#5-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo)
-6. [Tela de revisão: todas as funções](#6-tela-de-revisão-todas-as-funções)
-7. [Resumo final: mandar as correções](#7-resumo-final-mandar-as-correções)
-8. [Levar a revisão para outro computador](#8-levar-a-revisão-para-outro-computador)
-9. [Relatório do mês](#9-relatório-do-mês)
-10. [Configurações](#10-configurações)
-11. [Atalhos de teclado](#11-atalhos-de-teclado)
-12. [Atualizar o app](#12-atualizar-o-app)
-13. [Problemas comuns](#13-problemas-comuns)
+4. [Modo editor: conferir antes de entregar](#4-modo-editor-conferir-antes-de-entregar)
+5. [Fila de pastas](#5-fila-de-pastas)
+6. [Vídeo que voltou para a 2ª revisão (analisar de novo)](#6-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo)
+7. [Tela de revisão: todas as funções](#7-tela-de-revisão-todas-as-funções)
+8. [Resumo final: mandar as correções](#8-resumo-final-mandar-as-correções)
+9. [Levar a revisão para outro computador](#9-levar-a-revisão-para-outro-computador)
+10. [Relatório do mês](#10-relatório-do-mês)
+11. [Configurações](#11-configurações)
+12. [Atalhos de teclado](#12-atalhos-de-teclado)
+13. [Atualizar o app](#13-atualizar-o-app)
+14. [Problemas comuns](#14-problemas-comuns)
 
 ---
 
@@ -136,7 +146,8 @@ se estão inteiras, cortadas ou faltando.
    abre a janela do sistema; no Windows abre o navegador de pastas do próprio app (atalhos para
    Área de Trabalho, Downloads, Vídeos e os discos; dá também para colar o caminho e apertar Enter).
 2. O app confere sozinho: quantos vídeos, o tempo total e, se houver, o **relatório de tempo**
-   (`Relatorio_tempo_….txt`) com bruto, editado e aproveitamento.
+   (`Relatorio_tempo_….txt`) com bruto, editado e aproveitamento. Se a pasta ainda não tem o txt, clique
+   em **Gerar relatório de tempo** (veja abaixo).
 3. Confira **Professor**, **Entrega da edição** e **Nome na tarja** (como o professor quer o nome
    escrito na tarja; o app compara a tarja de cada vídeo com ele). Curso e disciplina são opcionais.
 4. **Ouvir as falas:** procura "errei", "retomando", takes repetidos. Deixa a análise mais demorada;
@@ -146,6 +157,16 @@ se estão inteiras, cortadas ou faltando.
 ![Início preenchido](docs/guia/03-inicio-preenchido.png)
 
 > A **entrega da edição** é a data que conta no relatório do mês. Depois de salva, ela trava.
+
+**Relatório de tempo pelo app.** Faz o mesmo txt do "Calculo de tempo" (o `.command`), com as mesmas
+contas, e funciona também no Windows. Escolha a **pasta dos brutos** e a **pasta dos editados** e clique em
+**Gerar relatório de tempo**:
+- soma os brutos da pasta **e das subpastas**, e os editados **só da pasta** (subpastas ficam de fora);
+- arquivos terminados em **-D** ou **-E** ficam de fora da soma (divisões do Estúdio Encoder), como no script;
+- salva o `Relatorio_tempo_AAAA-MM-DD_HHMM.txt` **na pasta dos editados**, igual ao do script, para subir
+  na planilha. Em **Ver o txt** dá para conferir antes de fechar.
+
+![Relatório de tempo feito pelo app](docs/guia/27-relatorio-de-tempo.png)
 
 ### Passo 2 — Análise
 
@@ -179,18 +200,51 @@ um nome e clica em **Aplicar a todos**).
 
 Uma aba por vídeo. Use **→** para ir de um item marcado para o próximo, olhe o frame e, se algo
 precisar ser corrigido, aperte **C** e escreva o comentário (salva sozinho). Detalhes na
-[seção 6](#6-tela-de-revisão-todas-as-funções).
+[seção 7](#7-tela-de-revisão-todas-as-funções).
 
 ![Tela de revisão](docs/guia/08-revisao.png)
 
 ### Passo 5 — Resumo final
 
 Todos os comentários juntos. Copie para mandar ao editor (com ou sem as imagens) ou gere um **SRT**
-para ele importar na timeline. Detalhes na [seção 7](#7-resumo-final-mandar-as-correções).
+para ele importar na timeline. Detalhes na [seção 8](#8-resumo-final-mandar-as-correções).
 
 ---
 
-## 4. Fila de pastas
+## 4. Modo editor: conferir antes de entregar
+
+O mesmo app tem um modo mais simples para o **editor** rodar no computador dele **antes de mandar a
+pasta**. Ele mesmo pega a tarja com o nome errado, o erro de ortografia, a vinheta cortada, a transição
+do slide, o áudio estourado e as falas que ficaram ("errei", "retomando"), e corrige antes da revisão.
+
+**Ligar:** **Configurações → Modo do app → Editor**, e escreva o **seu nome** logo abaixo (as horas dos
+vídeos que você conferir entram com ele no relatório do mês). Para voltar, escolha **Revisor**.
+
+1. **Início — Conferir antes de entregar:** a pasta dos vídeos editados, a pasta dos brutos (para o
+   relatório de tempo no fim), o professor e o nome na tarja. Clique em **Conferir os vídeos**.
+
+   ![Modo editor: Início](docs/guia/29-editor-inicio.png)
+
+2. **Checagem:** a tela de revisão sem os comentários. À direita fica a lista dos **avisos deste
+   vídeo**; clique num aviso (ou use **← →**) para ir até ele. Se for erro, corrija no Premiere e
+   exporte **com o mesmo nome**: o app percebe que o arquivo mudou e analisa de novo. Se não for erro,
+   clique em **Ignorar**. **Espaço** assiste ao vídeo, como no modo revisor.
+
+   ![Modo editor: Checagem](docs/guia/30-editor-checagem.png)
+
+3. **Pronto para enviar:** o que ainda falta olhar em cada vídeo (clique para abrir no aviso), o
+   **relatório de tempo** (gerar ou gerar de novo, com a pasta dos brutos lembrada) e as **suas horas**.
+   Quando aparecer **Tudo conferido**, pode enviar a pasta.
+
+   ![Pronto para enviar](docs/guia/31-pronto-para-enviar.png)
+
+No modo editor não aparecem: comentários, cópias, Trello, SRT, gráficos, conta-gotas, escolha de editor,
+aprovado/volta, Equipe e pacote. O **Relatório do mês** continua, para o editor ver as próprias horas.
+O que o editor ignorou fica só no computador dele.
+
+---
+
+## 5. Fila de pastas
 
 Chegou mais de uma pasta para revisar? Coloque todas na fila: o app analisa **uma depois da outra,
 sozinho**, enquanto você já revisa a primeira.
@@ -221,7 +275,7 @@ próxima pasta da fila.
 
 ---
 
-## 5. Vídeo que voltou para a 2ª revisão (analisar de novo)
+## 6. Vídeo que voltou para a 2ª revisão (analisar de novo)
 
 Quando o editor corrige um vídeo e ele volta para você, o app precisa analisar a versão nova. Na
 maioria das vezes isso acontece sozinho. Quando não acontece, use **Analisar de novo**.
@@ -276,7 +330,7 @@ antigos aparecem sem ela.
 
 ---
 
-## 6. Tela de revisão: todas as funções
+## 7. Tela de revisão: todas as funções
 
 ### Andar pelo vídeo
 
@@ -294,10 +348,25 @@ antigos aparecem sem ela.
 
 ![Zoom na linha do tempo](docs/guia/26-zoom-linha-do-tempo.png)
 - **Clique numa miniatura** da tira "Frames marcados e avisos": vai para ela.
+- **Espaço:** assiste ao vídeo inteiro a partir daqui (veja abaixo).
 - **Próxima aula ›** (canto de cima, à direita) ou **N**: próximo vídeo. Na última aula vira
   **Próxima pasta** (fila) ou **Resumo final**.
 
 ![Corte com ↓](docs/guia/10-revisao-corte.png)
+
+### Assistir ao vídeo inteiro (Espaço)
+
+**Espaço** (ou o botão **Assistir**) toca o vídeo original no próprio visor, a partir do frame em que você
+está. A linha azul anda pela forma de onda, o medidor de áudio aparece à direita e o zoom continua valendo.
+
+- **Espaço** ou **K** pausa. O visor fica no frame exato onde o vídeo parou, como um frame marcado:
+  **← → ↑ ↓** continuam dali e **C** comenta ali (C com o vídeo tocando já pausa).
+- **J** volta 5 segundos; **L** acelera (1× → 1,5× → 2×; clicar no aviso de velocidade também troca).
+- **Clique na forma de onda** com o vídeo tocando: pula para o ponto e continua tocando.
+- **Parar nos avisos** (botão ou **A**): o vídeo pausa sozinho em cada aviso, com o cartão do aviso
+  aberto. Espaço continua. O app lembra se está ligado.
+
+![Assistir ao vídeo inteiro](docs/guia/28-assistir.png)
 
 ### Avisos e comentários
 
@@ -400,7 +469,7 @@ lugar ao trocar de frame (para comparar). **Limpar pontos** tira todos.
 
 ---
 
-## 7. Resumo final: mandar as correções
+## 8. Resumo final: mandar as correções
 
 ![Resumo final](docs/guia/20-resumo-final-geral.png)
 
@@ -416,7 +485,7 @@ lugar ao trocar de frame (para comparar). **Limpar pontos** tira todos.
 
 ---
 
-## 8. Levar a revisão para outro computador
+## 9. Levar a revisão para outro computador
 
 Em **Resumo final → Salvar e exportar revisão**:
 
@@ -428,7 +497,7 @@ Em **Resumo final → Salvar e exportar revisão**:
 
 ---
 
-## 9. Relatório do mês
+## 10. Relatório do mês
 
 Botão **Relatório do mês** no topo. Horas de vídeo editado por editor, por curso e por semana, com
 o tempo gravado e o aproveitamento. O mês vem da **data de entrega da edição**, não do dia da revisão.
@@ -443,10 +512,12 @@ Google Drive) e indique essa pasta em **Configurações → Pastas**.
 
 ---
 
-## 10. Configurações
+## 11. Configurações
 
 ![Configurações](docs/guia/18-configuracoes.png)
 
+- **Modo do app:** **Revisor** (tudo) ou **Editor** (para o editor conferir antes de entregar; veja a
+  [seção 4](#4-modo-editor-conferir-antes-de-entregar)). No modo editor, escreva aqui o seu nome.
 - **Cache:** quanto espaço as análises ocupam, limpar por revisão ou tudo, e a limpeza automática do
   que não é usado há N dias. Limpar o cache **nunca apaga revisões nem comentários**.
 - **Pastas:** onde ficam o cache e as revisões salvas, e a pasta extra do relatório do mês.
@@ -461,7 +532,7 @@ Google Drive) e indique essa pasta em **Configurações → Pastas**.
 
 ---
 
-## 11. Atalhos de teclado
+## 12. Atalhos de teclado
 
 Na tela de revisão:
 
@@ -470,6 +541,9 @@ Na tela de revisão:
 | ← → | item anterior / próximo |
 | ↑ ↓ | corte anterior / próximo |
 | Shift + ← → | 1 frame para trás / para frente |
+| Espaço | assistir ao vídeo inteiro / pausar (com o trecho aberto: toca/pausa o trecho) |
+| J / K / L | voltar 5 s / pausar / tocar e acelerar (1×, 1,5×, 2×) |
+| A | parar nos avisos ao assistir (liga/desliga) |
 | N | próxima aula (na última: próxima pasta da fila) |
 | C | escrever o comentário |
 | V | ver o trecho (espaço toca/pausa) |
@@ -481,11 +555,11 @@ Na tela de revisão:
 | Roda do mouse na forma de onda | zoom na linha do tempo (Shift + roda: andar para os lados) |
 | + − | zoom |
 | Z | caber na tela / 100% |
-| Esc | fecha o trecho, os gráficos ou o conta-gotas; sai do campo de texto |
+| Esc | pausa o vídeo; fecha o trecho, os gráficos ou o conta-gotas; sai do campo de texto |
 
 ---
 
-## 12. Atualizar o app
+## 13. Atualizar o app
 
 1. Baixe de novo pelo link direto da [seção 1](#baixar-pelo-github) (ele sempre entrega a versão
    oficial mais nova).
@@ -497,7 +571,7 @@ Para saber qual versão você tem: **Configurações**, no fim do menu da esquer
 
 ---
 
-## 13. Problemas comuns
+## 14. Problemas comuns
 
 - **"O Revisor de Vídeos não está aberto"** na página: o app fechou (por exemplo, a aba ficou
   fechada por um tempo). Abra o app de novo com dois cliques.
@@ -508,7 +582,7 @@ Para saber qual versão você tem: **Configurações**, no fim do menu da esquer
 - **Nenhum editor para escolher:** cadastre a equipe em **Configurações → Equipe**.
 - **O vídeo voltou corrigido, mas aparecem os frames antigos:** use **Analisar de novo** (↻ na tela
   de análise, ou Ajustes → Analisar de novo na revisão). Veja a
-  [seção 5](#5-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo).
+  [seção 6](#6-vídeo-que-voltou-para-a-2ª-revisão-analisar-de-novo).
 - **Windows: "Falas: no processador · a placa de vídeo não funcionou":** atualize o driver da placa
   de vídeo (site da Nvidia, Intel ou AMD) e abra o app de novo. A análise funciona igual, só mais devagar.
 - **Algo estranho aconteceu:** o arquivo `revisor.log` mostra o que o app fez. Ele fica em

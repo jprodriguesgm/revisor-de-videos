@@ -76,8 +76,9 @@ Cy 283°, G 230°, Yl 175°); o desenho usou Rec.601 (R 108°).
   sugerida do txt/arquivos, travada depois de salva). Dia da revisão é só histórico.
 - Horas editadas contam no mês da entrega; horas gravadas no mês da gravação.
   Rótulo: "horas de vídeo editado". Relatório por professor continua na planilha Google.
-- Relatório de tempo (txt "Relatorio_tempo_*.txt" na mesma pasta): o app só lê os
-  números; não recalcula e não aplica a regra -D/-E (isso é da linha de produção).
+- Relatório de tempo (txt "Relatorio_tempo_*.txt" na mesma pasta): ao ABRIR uma pasta o app só lê os
+  números do txt (não recalcula). Desde 26/10 o app também GERA o txt, igual ao "Calculo de tempo.command"
+  (regra -D/-E e contas do script; ver "Pedidos do JP de 26/10/2026").
 - Editor marcado no app, por vídeo, com "aplicar a todos". Equipe: cada unidade cadastra a sua em
   Configurações → Equipe (o app começa sem ninguém; Início, Resumo e Revisão mostram "Cadastrar a equipe").
 - Pacote de revisão: revisao.json + frames/ (só comentados) + horas.txt; só nomes, sem
@@ -679,6 +680,64 @@ Montagem-11 (21/10): Mac e Windows TUDO OK no diagnóstico; sintéticos no Mac d
 - tools/ui_smoke.py precisa de um REVISOR_HOME com a equipe "Mônica" (configuracoes.json com
   {"editors":[{"name":"Mônica","active":true}]}) e de um Relatorio_tempo_*.txt na pasta das aulas.
 
+## Pedidos do JP de 26/10/2026 (versão 1.1.0)
+O JP pediu a explicação antes; respostas dele: modo editor no MESMO app; não precisa avisar o revisor
+do que o editor ignorou ("se ignorou, teve motivo"); o editor vê as próprias horas; o .command não
+mudou desde a conversa de setembro (a lógica abaixo é a dele).
+
+1. RELATÓRIO DE TEMPO FEITO PELO APP (revisor/timereport.py). Mudou a regra antiga "o app só lê o txt":
+   agora o app também GERA o txt, igual ao "Calculo de tempo.command" (que continua valendo; os dois
+   convivem até o JP conferir numa pasta real). Regras copiadas do script:
+   - brutos = pasta + subpastas; editados = só a pasta; sem arquivos ocultos; extensões mp4 mov m4v mxf
+     mts avi mkv; ordem = caminho (find | sort);
+   - fora da soma: nome (sem extensão) terminado em -D/-E (maiúscula ou minúscula) → linha "Ignorados por
+     terminarem em -D ou -E: brutos N, editados N" (só se N > 0);
+   - duração na ordem do script: Spotlight (mdls, só Mac) → mvhd (%.3f) → mehd (MP4 fragmentado) → FFprobe
+     do app (o script usava o afinfo nesse último caso);
+   - contas: cada linha = int(s + 0,5); a soma é feita como o awk do script ("print a + b" guarda %.6g a
+     cada passo) e só arredonda no fim (por isso a soma das linhas pode diferir do total em ~1 s);
+     aproveitamento "%.1f" com vírgula; descartado = bruto − editado (nunca negativo);
+   - nome "Relatorio_tempo_AAAA-MM-DD_HHMM.txt" na pasta dos editados (senão Mesa, depois Documentos),
+     UTF-8, fim de linha "\n", termina com "\n"; "ATENÇÃO - arquivos não lidos" quando algum falha; sem
+     nenhum vídeo lido numa das pastas → erro (o script também não salvava).
+   - Conferido: os 6 txt reais de tests/relatorios/ saem IGUAIS byte a byte (tests/test_relatorio_tempo.py
+     acha durações com decimais que dão as mesmas linhas e totais). Limite: no Mac com Spotlight o script lia o
+     tempo do Spotlight; aqui também (mdls primeiro), então deve bater. FALTA o JP comparar numa pasta real.
+   - Rota POST /api/timereport {raw, edited} → {file, saved_in, in_folder, text, report, summary}; a revisão
+     aberta da mesma pasta passa a usar o txt novo (App._apply_report); a pasta dos brutos fica em
+     rev["raw_folder"] (só neste computador: export_package/read_package tiram) e em settings.last_raw_folder.
+   - Telas: Início (revisor) → "Gerar relatório de tempo" quando a pasta não tem txt / "Gerar de novo" quando
+     tem; janela timeReportDialog (app.js) com as duas pastas, resultado e o txt para conferir.
+2. ASSISTIR AO VÍDEO INTEIRO (revisao.js, "Espaço"). O vídeo original toca DENTRO do visor (um <video>
+   dentro do layer do zoom, então o zoom continua valendo), a partir do frame atual. HUD "tocando", linha
+   azul andando (forma de onda redesenhada a cada 120 ms), medidor de áudio do trecho reaproveitado
+   (meterAttach agora usa c.live()). requestVideoFrameCallback quando existe (frame exato), senão rAF.
+   Teclas: Espaço toca/pausa · J volta 5 s · K pausa · L toca/acelera (1× → 1,5× → 2×; clicar no aviso de
+   velocidade também troca) · A "Parar nos avisos" (setting play_stop_warn; pausa sozinho no 1º aviso não
+   ignorado depois do ponto onde começou) · Esc pausa. Pausar = goFrame(frame onde parou): o visor fica no
+   frame exato e ← → ↑ ↓ continuam dali; C pausa e abre o comentário; clicar numa miniatura/navegar pausa;
+   clicar na forma de onda tocando = pula e CONTINUA tocando. O <video> só sai quando a imagem parada carrega
+   (sem piscar). Vídeo fora deste computador ou formato que o navegador não toca → aviso para usar V.
+3. MODO EDITOR (settings.mode = "revisor" | "editor"; settings.my_name). Mesmo app e mesmo download.
+   Configurações → "Modo do app" (primeira seção): Revisor / Editor + "Seu nome" (vira o editor de todos os
+   vídeos da pasta → horas no relatório do mês). No modo editor:
+   - etapas: Início · Análise · Checagem · Pronto para enviar (Resumo geral redireciona para o Pronto);
+   - Início "Conferir antes de entregar" (screenInicioEditor): pasta dos editados, pasta dos brutos (para o
+     txt), professor e nome na tarja; sem curso/disciplina/entrega/sensibilidade (entrega = dia da checagem,
+     o servidor põe sozinho; sensibilidade e listas = padrão das configurações);
+   - Checagem (revisao.js com ED): sem comentário, geral, cópias, Trello, G, P, editor, aprovado/volta e
+     conferir correções; painel da direita = lista dos avisos do vídeo (drawChecklist) + cartão do aviso
+     (Ignorar / Aceitar). Play, V, zoom, ↑ ↓ e Ajustes continuam;
+   - "Pronto para enviar" (final.js screenEnviar): avisos que faltam por vídeo (clicar abre no aviso:
+     RV.jump), ignorados, relatório de tempo (gerar / gerar de novo, brutos lembrados), horas com o nome;
+   - Configurações sem Equipe e sem Cópia e envio. Relatório do mês continua (o editor vê as horas dele).
+   - O que o editor ignorou NÃO vai para o revisor (decisão do JP). Cada computador continua sozinho.
+Testes: tests/test_relatorio_tempo.py (6 txt reais iguais, regras, mvhd/fragmentado, servidor + modo editor
++ pacote sem raw_folder). tools/ui_editor.py percorre no Chromium: gerar o txt, analisar, Espaço/J/K/L,
+clique na linha do tempo tocando, → pausa, parar nos avisos, C, modo editor (Início, Checagem, Ignorar,
+Pronto para enviar, gerar de novo, Configurações, 1100 px). O Chromium do Playwright não toca H.264/AAC:
+para o teste do play, as aulas sintéticas são convertidas para AV1 + Opus em .mp4 (ver o docstring).
+
 ## Correções do Windows (21/10/2026, 1º uso do JP no Windows com a 1.0.0)
 - Análise "travada em 93%": 93% é o fim do OCR e o começo da leitura do áudio. O FFmpeg manda o áudio
   por um cano (stdout) e as mensagens por outro (stderr); o app só lia as mensagens no fim. No Windows o
@@ -949,6 +1008,8 @@ Limites conhecidos da etapa 2:
   (2) pacote offline para iPad com frames + vídeo leve — médio/difícil; (3) app nativo Swift (AVFoundation,
   Vision pt-BR, whisper.cpp com Metal) — reescrever tudo, meses, conta Apple US$ 99/ano. Esperando o JP dizer se
   quer revisar longe da mesa (1) ou tudo sem computador (3).
+- 26/10: pedidos novos (relatório de tempo no app, assistir ao vídeo inteiro, modo editor) → ver "Pedidos do JP de
+  26/10/2026". Montagem de teste Mac + Windows; se o JP aprovar os dois, oficial 1.1.0.
 - 25–26/10: o JP diz que a 1.0.2 "funciona perfeitamente" até agora.
 - 22/10, 23h: o JP aprovou a Montagem 17 (Mac e Windows) → versão oficial 1.0.2 do commit 66ec74b (+ só GUIA).
   PUBLICADA (23/10 de madrugada): "Revisor de Vídeos 1.0.2", TUDO OK nos dois, sem PowerShell; Mac 40/41 (o +7
@@ -1030,6 +1091,8 @@ Limites conhecidos da etapa 2:
 - ui/revisao.js: tela de revisão (etapa 4; ↑ ↓ cortes, Próxima aula, trecho com duração e medidor de
   áudio em 21/10). ui/app.js: as outras telas e utilidades (fila de pastas em 21/10).
 - tools/ui_novidades.py: teste no navegador dos pedidos de 21/10.
+- timereport.py: relatório de tempo (txt igual ao do "Calculo de tempo.command"). tools/ui_editor.py: teste no
+  navegador dos pedidos de 26/10 (txt, play, modo editor).
 - export.py (etapa 5): texto copiado, SRT, horas por editor e txt, pacote (exportar, ler, juntar),
   relatório do mês (txt e CSV). ui/final.js: Resumo final, pacote, relatório do mês e configurações.
 - appdata.py: pasta do usuário e configurações. review.py: revisão salva. jobs.py: análise em

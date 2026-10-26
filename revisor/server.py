@@ -24,7 +24,8 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import numpy as np
 
-from . import __version__, analyze, appdata, dialogs, export, frames, jobs, life, media, review, rounds, scopes, spell, summary
+from . import (__version__, analyze, appdata, dialogs, export, frames, jobs, life, media, review, rounds, scopes, spell,
+               summary, timereport)
 from .timecode import parse_rate
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -255,7 +256,8 @@ class App:
                 "entrega_locked": prev.get("entrega_locked"), "nome_tarja": prev.get("nome_tarja"),
                 "updated": prev.get("updated"),
                 "comments": sum(review.comment_total(v) for v in prev.get("videos", [])),
-                "sensitivity": prev.get("sensitivity"), "group_gap_s": prev.get("group_gap_s")},
+                "sensitivity": prev.get("sensitivity"), "group_gap_s": prev.get("group_gap_s"),
+                "raw_folder": prev.get("raw_folder") if prev.get("raw_folder") and Path(prev["raw_folder"]).is_dir() else None},
             "suggest": {"professor": prof, "curso": (prev or {}).get("curso") or "",
                         "disciplina": (prev or {}).get("disciplina") or "",
                         "entrega": entrega, "entrega_from": entrega_from, "nome_tarja": tag},
@@ -279,8 +281,11 @@ class App:
         rev["curso"] = (body.get("curso") or "").strip()
         rev["disciplina"] = (body.get("disciplina") or "").strip()
         rev["nome_tarja"] = (body.get("nome_tarja") or "").strip()
+        editor_mode = s.get("mode") == "editor"
         if not rev.get("entrega_locked"):
             ent = review.parse_date(body.get("entrega"))
+            if not ent and editor_mode:
+                ent = date.today().isoformat()        # modo editor: a entrega é o dia da checagem
             if not ent:
                 raise ApiError("Preencha a entrega da edição (dd/mm/aaaa).")
             rev["entrega"] = ent
@@ -289,15 +294,19 @@ class App:
         rev["group_gap_s"] = float(body.get("group_gap_s", s["group_gap_s"]))
         rev["spell"] = bool(body.get("spell", s["spell"]))
         rev["transcribe"] = bool(body.get("transcribe", s["transcribe"]))
-        rep = sc.get("report")
-        rev["report"] = None if not rep else {k: rep[k] for k in (
-            "file", "project", "date", "total_raw_s", "total_edited_s", "usage_pct", "discarded_s",
-            "ignored_raw", "ignored_edited", "raw")}
-        rev["folder_warnings"] = [f"{v['file']}: {v['error']}." for v in sc["videos"] if v.get("error")] + sc["warnings"]
+        raw = (body.get("raw_folder") or "").strip()
+        if raw:
+            if not Path(raw).expanduser().is_dir():
+                raise ApiError("A pasta dos brutos não foi encontrada.")
+            rev["raw_folder"] = str(Path(raw).expanduser().resolve())
         review.merge_videos(rev, [{"id": v["id"], "file": v["file"], "duration": v["duration"]}
                                   for v in sc["videos"] if v["id"]])
-        for v in rev["videos"]:
-            v["report_entry"] = sc["matches"].get(v["file"])
+        self._apply_report(rev, sc)
+        if editor_mode and (s.get("my_name") or "").strip():
+            # modo editor: os vídeos são de quem está usando este computador (horas no relatório do mês)
+            for v in rev["videos"]:
+                if not v.get("editor"):
+                    v["editor"] = s["my_name"].strip()
         # lembrar para as próximas revisões
         upd = {"sensitivity": rev["sensitivity"], "group_gap_s": rev["group_gap_s"], "spell": rev["spell"],
                "transcribe": rev["transcribe"], "last_folder": str(Path(sc["folder"]).parent)}
@@ -322,6 +331,55 @@ class App:
             self._enqueue(rev, sc, front=True)
         self._pump()
         return {"ok": True, "project": rev["project"], "queued": False}
+
+    @staticmethod
+    def _apply_report(rev: dict, sc: dict) -> None:
+        """Números do relatório de tempo da pasta na revisão (e a linha do txt de cada vídeo)."""
+        rep = sc.get("report")
+        rev["report"] = None if not rep else {k: rep[k] for k in (
+            "file", "project", "date", "total_raw_s", "total_edited_s", "usage_pct", "discarded_s",
+            "ignored_raw", "ignored_edited", "raw")}
+        rev["folder_warnings"] = [f"{v['file']}: {v['error']}." for v in sc["videos"] if v.get("error")] + sc["warnings"]
+        for v in rev["videos"]:
+            v["report_entry"] = sc["matches"].get(v["file"])
+
+    # ---------------------------------------------------------------- relatório de tempo (feito pelo app)
+    def time_report(self, body: dict) -> dict:
+        """Faz o txt de tempo como o "Calculo de tempo.command" e grava na pasta dos editados."""
+        raw = (body.get("raw") or "").strip()
+        ed = (body.get("edited") or "").strip()
+        if not raw:
+            raise ApiError("Escolha a pasta dos brutos.")
+        if not ed:
+            raise ApiError("Escolha a pasta dos editados.")
+        raw_p, ed_p = Path(raw).expanduser().resolve(), Path(ed).expanduser().resolve()
+        try:
+            res, path = timereport.make(raw_p, ed_p)
+        except timereport.TimeReportError as e:
+            raise ApiError(str(e))
+        appdata.save_settings({"last_raw_folder": str(raw_p)})
+        in_folder = path.parent.resolve() == ed_p
+        # a revisão aberta desta pasta passa a usar o relatório novo
+        rev = self.review
+        if rev is not None and rev.get("folder") and Path(rev["folder"]).resolve() == ed_p:
+            with self.lock:
+                rev["raw_folder"] = str(raw_p)
+                sc = jobs.scan_folder(ed_p)
+                if sc["ok"]:
+                    self._apply_report(rev, sc)
+                    if self.scan and Path(self.scan["folder"]).resolve() == ed_p:
+                        self.scan["report"], self.scan["warnings"], self.scan["matches"] = (
+                            sc["report"], sc["warnings"], sc["matches"])
+                self.save_review()
+        else:
+            prev = review.find(self.reviews_root(), ed_p.name)
+            if prev is not None and prev.get("folder") and Path(prev["folder"]).resolve() == ed_p:
+                prev["raw_folder"] = str(raw_p)
+                review.save(self.reviews_root(), prev)
+        from . import report as _report
+        parsed = _report.parse(path).to_dict()
+        return {"ok": True, "file": path.name, "saved_in": str(path.parent), "in_folder": in_folder,
+                "text": res.text, "report": parsed, "summary": res.summary()}
 
     def open_saved(self, project: str) -> dict:
         """Abre uma revisão salva. Se a pasta já está na fila, só troca a revisão aberta (a análise
@@ -593,7 +651,8 @@ class App:
             row = summary.video_row(a, sens, spell=rev.get("spell", True), dismissed=v.get("dismissed")) if a else None
             rows.append({"n": k + 1, "id": v["id"], "file": v["file"], "duration": v["duration"],
                          "editor": v.get("editor"), "missing": v.get("missing", False),
-                         "comments": review.comment_total(v), "row": row})
+                         "comments": review.comment_total(v), "row": row,
+                         "ignored": len(v.get("dismissed") or []), "status": v.get("status")})
         if noted:
             self.save_review()
         ready = [r["row"] for r in rows if r["row"]]
@@ -601,7 +660,7 @@ class App:
         return {
             "review": {k: rev.get(k) for k in ("project", "folder", "professor", "curso", "disciplina", "nome_tarja",
                                                "entrega", "entrega_locked", "sensitivity", "group_gap_s", "spell",
-                                               "transcribe", "report", "folder_warnings", "updated")},
+                                               "transcribe", "report", "folder_warnings", "updated", "raw_folder")},
             "videos": rows,
             "audio": summary.audio_totals(ready),
             "editors": appdata.active_editors(),
@@ -697,6 +756,7 @@ class App:
                 x["i"] = k
             it["items"] = merged
         out["nav_slides"] = bool(s.get("nav_slides"))
+        out["play_stop_warn"] = bool(s.get("play_stop_warn"))
         au = a.get("audio") or {}
         out.update({
             "ready": True,
@@ -1450,7 +1510,7 @@ class App:
         return {
             "settings": {k: s.get(k) for k in ("sensitivity", "group_gap_s", "transcribe", "spell", "spell_en", "spell_la",
                                                "time_format", "srt_block_s", "srt_prefix", "srt_where",
-                                               "cache_auto_days", "error_phrases", "generic_names")},
+                                               "cache_auto_days", "error_phrases", "generic_names", "mode", "my_name")},
             "editors": s.get("editors", []),
             "folders": {"cache_dir": str(self.cache_root()), "reviews_dir": str(self.reviews_root()),
                         "report_dir": s.get("report_dir"),
@@ -1496,6 +1556,10 @@ class App:
         pick("sensitivity", lambda v: isinstance(v, int) and 0 <= v <= 100)
         pick("group_gap_s", lambda v: v in (0, 4, 8, 12))
         pick("cache_auto_days", lambda v: v in (0, 7, 15, 30, 60))
+        pick("mode", lambda v: v in ("revisor", "editor"))
+        pick("my_name", lambda v: isinstance(v, str) and len(v.strip()) <= 40)
+        if "my_name" in upd:
+            upd["my_name"] = " ".join(upd["my_name"].split())
         for k in ("transcribe", "spell", "spell_en", "spell_la"):
             pick(k, lambda v: isinstance(v, bool))
         for k in ("error_phrases", "generic_names"):
@@ -1774,7 +1838,8 @@ class Handler(BaseHTTPRequestHandler):
                 # Windows: sem janela do sistema, direto o navegador de pastas do app (antivírus, 22/10)
                 "native_dialog": os.name != "nt",
                 "settings": {k: s[k] for k in ("vinheta_in", "vinheta_out", "sensitivity", "group_gap_s", "spell",
-                                               "transcribe", "history", "last_folder", "time_format")},
+                                               "transcribe", "history", "last_folder", "time_format",
+                                               "last_raw_folder", "mode", "my_name")},
                 "editors": appdata.active_editors(s),
                 "vinhetas_ok": {"in": bool(s.get("vinheta_in") and Path(s["vinheta_in"]).is_file()),
                                 "out": bool(s.get("vinheta_out") and Path(s["vinheta_out"]).is_file())},
@@ -1884,6 +1949,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if ep == "start":
             return self._json(APP.start(body))
+        if ep == "timereport":
+            return self._json(APP.time_report(body))
         if ep == "dialog":
             kind = body.get("kind", "folder")
             start = body.get("start") or None
@@ -1897,10 +1964,12 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"path": p, "cancelled": p is None})
         if ep == "settings":
             allowed = {"vinheta_in", "vinheta_out", "sensitivity", "group_gap_s", "spell", "transcribe", "nav_slides",
-                       "clip_half_s"}
+                       "clip_half_s", "play_stop_warn"}
             upd = {k: v for k, v in body.items() if k in allowed}
             if "clip_half_s" in upd:
                 upd["clip_half_s"] = frames.clip_half(upd["clip_half_s"])
+            if "play_stop_warn" in upd:
+                upd["play_stop_warn"] = bool(upd["play_stop_warn"])
             for k in ("vinheta_in", "vinheta_out"):
                 if upd.get(k):
                     if not Path(upd[k]).expanduser().is_file():
