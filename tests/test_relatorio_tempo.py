@@ -9,6 +9,7 @@ gerado, linha por linha, com o original (menos a linha "Data:").
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -37,8 +38,13 @@ def _exact_names(text: str, rep):
     rep.edited = [(s, n) for (s, _o), n in zip(rep.edited, names["edited"])]
 
 
+def _safe(name: str) -> str:
+    """No Windows ":" não pode em nome de pasta ("Carlos 21:09" vira "Carlos 21-09")."""
+    return name.replace(":", "-") if os.name == "nt" else name
+
+
 def _fake_dirs(tmp_path, rep, ignored_raw, ignored_ed):
-    raw, ed = tmp_path / "brutos", tmp_path / rep.project
+    raw, ed = tmp_path / "brutos", tmp_path / _safe(rep.project)
     raw.mkdir()
     ed.mkdir()
     for _s, name in rep.raw:
@@ -60,6 +66,8 @@ def test_txt_igual_ao_do_script(sample, tmp_path, monkeypatch):
     rep = report.parse(sample)
     original = sample.read_text(encoding="utf-8")
     _exact_names(original, rep)
+    original = original.replace(f"Projeto (pasta editados): {rep.project}\n",
+                                f"Projeto (pasta editados): {_safe(rep.project)}\n")
     raw, ed = _fake_dirs(tmp_path, rep, rep.ignored_raw or 0, rep.ignored_edited or 0)
     # a ordem das linhas tem que ser a mesma do script (find | sort)
     assert [p.name for p in timereport.list_videos(raw, True)] == [n for _s, n in rep.raw] + \
@@ -86,7 +94,7 @@ def test_txt_igual_ao_do_script(sample, tmp_path, monkeypatch):
 
 
 def test_regras_basicas(tmp_path, monkeypatch):
-    raw, ed = tmp_path / "Brutos", tmp_path / "Ana 21:09"
+    raw, ed = tmp_path / "Brutos", tmp_path / _safe("Ana 21:09")
     (raw / "cam2").mkdir(parents=True)
     ed.mkdir()
     durs = {"2026-09-21 10-00-00.mp4": 600.4, "2026-09-21 10-00-00-D.mp4": 300, "2026-09-21 10-00-00-e.mov": 300,
@@ -101,7 +109,7 @@ def test_regras_basicas(tmp_path, monkeypatch):
     res = timereport.build(raw, ed, now=datetime(2026, 10, 26, 9, 5))
     t = res.text
     assert res.filename == "Relatorio_tempo_2026-10-26_0905.txt"
-    assert "Projeto (pasta editados): Ana 21:09\nData: 26/10/2026 09:05\n\nBRUTOS (2 arquivos)\n" in t
+    assert f"Projeto (pasta editados): {_safe('Ana 21:09')}\nData: 26/10/2026 09:05\n\nBRUTOS (2 arquivos)\n" in t
     assert "  00:10:00  2026-09-21 10-00-00.mp4\n  00:01:00  2026-09-21 11-00-00.mkv\n\nEDITADOS (2 arquivos)\n" in t
     assert "TEMPO DE GRAVAÇÃO (bruto): 00:11:00\n" in t           # 600,4 + 59,6 = 660
     assert "TEMPO LÍQUIDO (editado):   00:10:01\n" in t           # 500,25 + 100,25 = 600,5 → arredonda para cima
