@@ -943,6 +943,13 @@ Limites conhecidos da etapa 2:
 - MAC DO GITHUB (22/10): macos-14 cancelado 4 vezes seguidas ("capacity constraints" das máquinas Mac arm64;
   o job nem começa). Trocado para macos-15 (também M1/arm64; deployment target 11.0 e check_macos_min continuam
   valendo; o cache dos programas usa a mesma chave). Se o macos-15 também faltar, esperar e rodar de novo.
+- iPAD (conversa de 25/10, nada feito): o app atual não roda no iPad (iPadOS não deixa chamar FFmpeg/Tesseract/
+  Whisper). Caminhos: (1) iPad como tela do Mac/PC na mesma rede (servidor aceitar a rede local com senha curta;
+  telas para toque; testar se a rede da PUC deixa um aparelho falar com outro) — fácil/médio, sugerido;
+  (2) pacote offline para iPad com frames + vídeo leve — médio/difícil; (3) app nativo Swift (AVFoundation,
+  Vision pt-BR, whisper.cpp com Metal) — reescrever tudo, meses, conta Apple US$ 99/ano. Esperando o JP dizer se
+  quer revisar longe da mesa (1) ou tudo sem computador (3).
+- 25–26/10: o JP diz que a 1.0.2 "funciona perfeitamente" até agora.
 - 22/10, 23h: o JP aprovou a Montagem 17 (Mac e Windows) → versão oficial 1.0.2 do commit 66ec74b (+ só GUIA).
   PUBLICADA (23/10 de madrugada): "Revisor de Vídeos 1.0.2", TUDO OK nos dois, sem PowerShell; Mac 40/41 (o +7
   frames conhecido da imagem congelada). PRÓXIMO: calibrar frame solto / tela preta / vinheta sem fundo com as aulas
