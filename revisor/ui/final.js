@@ -672,10 +672,22 @@ async function screenConfig(root, arg) {
   const newEd = h("input", { id: "cfg-newed", class: "input", placeholder: "Adicionar editor", autocomplete: "off" });
   const addEd = async () => { if (newEd.value.trim() && await teamOp({ op: "add", name: newEd.value }, "Editor adicionado.")) newEd.value = ""; };
   newEd.addEventListener("keydown", (e) => { if (e.key === "Enter") addEd(); });
-  const sEquipe = sec("equipe", h2("Equipe", "Quem aparece na escolha de editor de cada vídeo e no relatório do mês."), team,
+  // exportar / importar a equipe (pedido do JP, 27/10): equipes grandes cadastram uma vez e passam o arquivo
+  const exportTeam = () => {
+    if (!team.querySelector(".cfg-trow:not(.off)")) { toast("Cadastre a equipe antes de exportar.", true); return; }
+    location.href = "/api/settings/equipe.txt";
+    toast("Arquivo da equipe baixado (pasta Downloads). Mande para as outras pessoas importarem.");
+  };
+  const sEquipe = sec("equipe",
+    h("div", { class: "cfg-hrow" }, h2("Equipe", "Quem aparece na escolha de editor de cada vídeo e no relatório do mês."),
+      h("div", { class: "row", style: { gap: "8px", flex: "none" } },
+        h("button", { class: "btn small", type: "button", text: "Importar equipe", onclick: () => importTeamDialog((eds) => drawTeam(eds)) }),
+        h("button", { class: "btn small", type: "button", text: "Exportar equipe", onclick: exportTeam }))),
+    team,
     h("div", { class: "row" }, h("label", { for: "cfg-newed", class: "sr", text: "Novo editor" }), newEd,
       h("button", { class: "btn", text: "Adicionar", onclick: addEd })),
-    h("span", { class: "hint", text: "Desativar não apaga o histórico: as horas já registradas continuam no relatório." }));
+    h("span", { class: "hint", text: "Desativar não apaga o histórico: as horas já registradas continuam no relatório. " +
+      "Exportar equipe baixa um arquivo com os nomes ativos; nos outros computadores, Importar equipe junta esses nomes aos que já estão lá (ninguém é apagado)." }));
 
   // ---- Cópia e envio
   const preview = h("div", { class: "cfg-prev mono" });
@@ -763,6 +775,65 @@ async function screenConfig(root, arg) {
   body.querySelectorAll(".cfg-sec").forEach((s) => obs.observe(s));
   screenCleanup = () => obs.disconnect();
   loadCache();
+}
+
+/** Importar a equipe: o arquivo exportado em outro computador (.txt, um nome por linha) ou uma lista colada.
+ *  Junta com a equipe deste computador: ninguém é apagado. done(editores) roda depois de importar. */
+function importTeamDialog(done) {
+  const ta = h("textarea", { class: "rv-ta", style: { minHeight: "160px" }, "aria-label": "Nomes da equipe",
+    placeholder: "Ou cole aqui os nomes, um por linha (dá para copiar uma coluna da planilha)." });
+  const info = h("span", { class: "hint" });
+  const file = h("input", { type: "file", accept: ".txt,text/plain", class: "hidden" });
+  const parse = (t) => {
+    const seen = new Set(), out = [];
+    String(t || "").split(/\r?\n|\r/).forEach((line) => {
+      line = line.trim().replace(/^\ufeff/, "");
+      if (!line || line.startsWith("#")) return;
+      line.split(/[;\t]/).forEach((p) => {
+        const n = p.split(/\s+/).join(" ").replace(/^[\s,\-•*]+|[\s,\-•*]+$/g, "");
+        if (n && n.length <= 40 && !seen.has(n.toLowerCase())) { seen.add(n.toLowerCase()); out.push(n); }
+      });
+    });
+    return out;
+  };
+  const go = h("button", { class: "btn primary", type: "button", style: { height: "40px", fontSize: "14px" }, text: "Importar", disabled: true });
+  const refresh = () => {
+    const n = parse(ta.value).length;
+    info.textContent = n ? `${plural(n, "nome encontrado", "nomes encontrados")}.` : "Nenhum nome ainda.";
+    go.disabled = !n;
+    go.textContent = n ? `Importar ${plural(n, "nome", "nomes")}` : "Importar";
+  };
+  ta.addEventListener("input", refresh);
+  file.addEventListener("change", () => {
+    const f = file.files && file.files[0];
+    if (!f) return;
+    if (f.size > 200000) { toast("Esse arquivo é grande demais para ser uma lista de equipe.", true); return; }
+    const fr = new FileReader();
+    fr.onload = () => { ta.value = String(fr.result || ""); refresh(); };
+    fr.onerror = () => toast("Não consegui ler o arquivo.", true);
+    fr.readAsText(f, "utf-8");
+  });
+  go.addEventListener("click", async () => {
+    go.disabled = true;
+    try {
+      const r = await api("settings/editors", { op: "import", text: ta.value });
+      closeModal();
+      const parts = [];
+      if (r.added.length) parts.push(plural(r.added.length, "nome novo", "nomes novos"));
+      if (r.reactivated.length) parts.push(plural(r.reactivated.length, "reativado", "reativados"));
+      if (r.already.length) parts.push(`${r.already.length} já ${r.already.length === 1 ? "estava" : "estavam"} na equipe`);
+      toast(`Equipe importada: ${parts.join(" · ")}.`);
+      if (done) done(r.editors);
+    } catch (e) { toast(e.message, true); go.disabled = false; }
+  });
+  openModal("Importar equipe", [
+    h("p", { class: "muted", style: { margin: 0, fontSize: "13px" },
+      text: "Escolha o arquivo que alguém exportou em Configurações → Equipe → Exportar equipe, ou cole a lista de nomes. " +
+            "Os nomes se juntam aos que já estão aqui: ninguém é apagado e quem estava desativado volta a ficar ativo." }),
+    h("button", { class: "btn", type: "button", text: "Escolher o arquivo da equipe (.txt)", onclick: () => file.click() }),
+    file, ta, info],
+    [h("button", { class: "btn ghost", type: "button", text: "Cancelar", onclick: closeModal }), go]);
+  refresh();
 }
 
 /** Lista editável em "chips" (frases de erro, nomes genéricos). onSave(lista) devolve true se salvou. */

@@ -1602,6 +1602,28 @@ class App:
                 e["active"] = True
             else:
                 eds.append({"name": name, "active": True})
+        elif op == "import":
+            # junta: quem não estava entra; quem estava desativado volta a ficar ativo; ninguém sai
+            names = appdata.parse_team(body.get("text") or "\n".join(map(str, body.get("names") or [])))
+            if not names:
+                raise ApiError("Nenhum nome encontrado. O arquivo da equipe tem um nome por linha.")
+            if len(names) + len(eds) > appdata.TEAM_MAX:
+                raise ApiError(f"Equipe grande demais (até {appdata.TEAM_MAX} nomes).")
+            added, back, same = [], [], []
+            for n in names:
+                e = names_low.get(n.lower())
+                if e is None:
+                    e = {"name": n, "active": True}
+                    eds.append(e)
+                    names_low[n.lower()] = e
+                    added.append(n)
+                elif not e.get("active", True):
+                    e["active"] = True
+                    back.append(e["name"])
+                else:
+                    same.append(e["name"])
+            appdata.save_settings({"editors": eds})
+            return {"ok": True, "editors": eds, "added": added, "reactivated": back, "already": same}
         elif op == "toggle":
             e = names_low.get(name.lower())
             if e is None:
@@ -1933,6 +1955,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._download(export.month_csv(rep), name + ".csv", "text/csv; charset=utf-8")
         if ep == "settings/all":
             return self._json(APP.settings_view())
+        if ep == "settings/equipe.txt":
+            return self._download(appdata.team_txt().encode("utf-8"), "Equipe - Revisor de Videos.txt",
+                                  "text/plain; charset=utf-8")
         if ep == "cache":
             return self._json(APP.cache_list())
         raise ApiError("rota desconhecida", 404)

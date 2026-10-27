@@ -738,6 +738,18 @@ clique na linha do tempo tocando, → pausa, parar nos avisos, C, modo editor (I
 Pronto para enviar, gerar de novo, Configurações, 1100 px). O Chromium do Playwright não toca H.264/AAC:
 para o teste do play, as aulas sintéticas são convertidas para AV1 + Opus em .mp4 (ver o docstring).
 
+## Exportar e importar a equipe (27/10/2026, versão 1.1.1)
+Pedido de outras unidades (uma equipe tem 30+ pessoas): uma pessoa cadastra, as outras importam.
+- Configurações → Equipe: "Importar equipe" e "Exportar equipe"; no Início, o aviso "Primeira vez?" também
+  tem "Importar equipe".
+- Arquivo "Equipe - Revisor de Videos.txt" (GET /api/settings/equipe.txt): texto UTF-8, cabeçalho "# Equipe do
+  Revisor de Vídeos…" e um nome ATIVO por linha (inativos ficam só no histórico do computador).
+- Importar (POST /api/settings/editors {op: "import", text | names}): appdata.parse_team lê uma linha por nome,
+  também ";" e tabulação (colado de planilha), tira #, marcadores, repetidos (sem diferença de maiúscula) e nomes
+  > 40 letras. JUNTA: novo entra ativo, desativado volta a ativo, ninguém sai. Até 300 nomes (TEAM_MAX).
+  A janela aceita o arquivo (FileReader) ou a lista colada e mostra "Importar N nomes".
+- Testes: tests/test_equipe.py (32 nomes de um computador para outro, reativar, não duplicar, vazio/grande, rota).
+
 ## Correções do Windows (21/10/2026, 1º uso do JP no Windows com a 1.0.0)
 - Análise "travada em 93%": 93% é o fim do OCR e o começo da leitura do áudio. O FFmpeg manda o áudio
   por um cano (stdout) e as mensagens por outro (stderr); o app só lia as mensagens no fim. No Windows o

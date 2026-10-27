@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 import threading
 from pathlib import Path
@@ -136,6 +137,36 @@ def remember(kind: str, value: str | None, limit: int = 60) -> None:
 def active_editors(settings: dict | None = None) -> list[str]:
     s = settings or load_settings()
     return [e["name"] for e in s.get("editors", []) if e.get("active", True)]
+
+
+# ---------------------------------------------------------------- equipe em arquivo (pedido do JP, 27/10)
+# Uma pessoa cadastra a equipe e manda o arquivo para as outras importarem (equipes grandes, 30+ pessoas).
+# Texto simples, um nome por linha, para dar até para editar no Bloco de Notas ou colar de uma planilha.
+TEAM_FILE_HEAD = "# Equipe do Revisor de Vídeos: um nome por linha. Linhas com # são ignoradas."
+TEAM_MAX = 300
+
+
+def team_txt(settings: dict | None = None) -> str:
+    """Arquivo da equipe: só quem está ativo (os inativos ficam só no histórico deste computador)."""
+    names = active_editors(settings)
+    return TEAM_FILE_HEAD + "\n" + "".join(n + "\n" for n in names)
+
+
+def parse_team(text: str) -> list[str]:
+    """Nomes de um arquivo de equipe ou de uma lista colada. Aceita uma linha por nome e também
+    nomes separados por ";" ou tabulação (colados de uma planilha); tira repetidos e linhas com #."""
+    out, seen = [], set()
+    for line in str(text or "").replace("\r", "\n").split("\n"):
+        line = line.strip().lstrip("\ufeff")
+        if not line or line.startswith("#"):
+            continue
+        for part in re.split(r"[;\t]", line):
+            name = " ".join(part.split()).strip(" ,-•*")
+            if not name or len(name) > 40 or name.lower() in seen:
+                continue
+            seen.add(name.lower())
+            out.append(name)
+    return out
 
 
 def spell_langs(settings: dict | None = None) -> tuple:

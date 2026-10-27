@@ -6,6 +6,10 @@ ortografia, tarja com o nome do professor, transições de slide, vinhetas e fal
 
 Tudo roda no seu computador: **nenhum vídeo, frame ou comentário sai dele**.
 
+**Novidades da versão 1.1.1**
+- **Exportar e importar a equipe:** uma pessoa cadastra e as outras importam o arquivo
+  ([seção 2](#cadastrar-a-equipe)).
+
 **Novidades da versão 1.1.0**
 - **Assistir ao vídeo inteiro** (Espaço): o vídeo toca no próprio visor, com o zoom e o medidor de áudio;
   J volta 5 s, K pausa, L acelera, e **Parar nos avisos** (A) pausa sozinho em cada aviso
@@ -129,6 +133,19 @@ Clique em **Configurações → Equipe** (no aviso, ou no botão **Configuraçõ
 - **Renomear:** troca o nome também nas revisões já salvas (as horas continuam juntas).
 - **Desativar:** a pessoa some da lista de escolha, mas o histórico continua no relatório do mês.
   Use quando alguém sai da equipe.
+
+**Equipe grande? Cadastre uma vez e passe para os outros computadores.**
+1. Num computador, cadastre todo mundo. Para não digitar um por um: **Importar equipe** e cole a lista
+   de nomes, um por linha (dá para copiar uma coluna de uma planilha).
+2. Clique em **Exportar equipe**. Baixa o arquivo `Equipe - Revisor de Videos.txt` (pasta Downloads),
+   com os nomes ativos.
+3. Mande o arquivo para as outras pessoas (e-mail, WhatsApp, Drive).
+4. Em cada computador: **Configurações → Equipe → Importar equipe → Escolher o arquivo da equipe**
+   → **Importar**. Na primeira vez, o botão **Importar equipe** também aparece no aviso do Início.
+
+Importar **junta** os nomes com os que já estão no computador: ninguém é apagado, nome repetido não
+duplica e quem estava desativado volta a ficar ativo. Entrou gente nova? Exporte de novo e importe por
+cima.
 
 ### Escolher as vinhetas (uma vez só)
 
@@ -523,7 +540,7 @@ Google Drive) e indique essa pasta em **Configurações → Pastas**.
 - **Pastas:** onde ficam o cache e as revisões salvas, e a pasta extra do relatório do mês.
 - **Análise:** sensibilidade e "juntar listas" padrão, "Ouvir as falas" padrão, a lista de **frases
   de erro** ("errei", "retomando"…) e de **nomes genéricos da tarja** ("Nome do professor"…).
-- **Equipe:** os editores (ver [seção 2](#cadastrar-a-equipe)).
+- **Equipe:** os editores, com **Importar equipe** e **Exportar equipe** (ver [seção 2](#cadastrar-a-equipe)).
 - **Cópia e envio ao editor:** formato do tempo (segundos, ou timecode NDF/DF), duração de cada
   bloco do SRT, o texto do começo ("CORRIGIR:") e onde salvar os SRT.
 - **Ortografia e dicionário:** inglês e latim liga/desliga, e a sua lista de palavras e expressões

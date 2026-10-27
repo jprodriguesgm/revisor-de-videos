@@ -635,7 +635,10 @@ async function screenInicio(root) {
   const firstTime = !(S.editors || []).length ? h("div", { class: "notice info" }, icon("info"),
     h("span", { style: { flex: 1 } }, "Primeira vez? Cadastre os editores da sua equipe em ",
       h("a", { href: "#/config/equipe", text: "Configurações → Equipe" }),
-      ". Eles aparecem na escolha de quem editou cada vídeo e no relatório do mês.")) : null;
+      ". Eles aparecem na escolha de quem editou cada vídeo e no relatório do mês."),
+    h("button", { class: "btn small", type: "button", text: "Importar equipe",
+      title: "Usar o arquivo da equipe que alguém exportou em outro computador",
+      onclick: () => importTeamDialog(() => render()) })) : null;
   root.appendChild(h("div", { class: "screen-center" }, h("div", { class: "start-wrap" }, firstTime,
     h("section", { class: "panel start" },
       h("div", { class: "start-head" },
