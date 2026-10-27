@@ -749,6 +749,9 @@ Pedido de outras unidades (uma equipe tem 30+ pessoas): uma pessoa cadastra, as 
   > 40 letras. JUNTA: novo entra ativo, desativado volta a ativo, ninguém sai. Até 300 nomes (TEAM_MAX).
   A janela aceita o arquivo (FileReader) ou a lista colada e mostra "Importar N nomes".
 - Testes: tests/test_equipe.py (32 nomes de um computador para outro, reativar, não duplicar, vazio/grande, rota).
+- 27/10: o JP pediu publicar direto (sem montagem de teste: só mexe na Equipe). VERSÃO OFICIAL 1.1.1 PUBLICADA (commit
+  e00da17), Mac + Windows TUDO OK, sintéticos 41/41. O Mac do GitHub ficou sem máquina ("capacity constraints") em 6
+  tentativas seguidas; a 7ª passou (o script de tentar de novo a cada 5 min resolveu sozinho).
 
 ## Correções do Windows (21/10/2026, 1º uso do JP no Windows com a 1.0.0)
 - Análise "travada em 93%": 93% é o fim do OCR e o começo da leitura do áudio. O FFmpeg manda o áudio
