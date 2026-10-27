@@ -1010,7 +1010,8 @@ Limites conhecidos da etapa 2:
   quer revisar longe da mesa (1) ou tudo sem computador (3).
 - 26/10: pedidos novos (relatório de tempo no app, assistir ao vídeo inteiro, modo editor) → ver "Pedidos do JP de
   26/10/2026". "Montagem 20 (teste)" (commit b31d35b): Mac e Windows TUDO OK, sintéticos 41/41. Esperando o
-  teste do JP (comparar o txt do app com o do .command numa pasta real). Se aprovar os dois: oficial 1.1.0.
+  teste do JP. 27/10: o JP testou ("funcionando tudo perfeito") → VERSÃO OFICIAL 1.1.0 PUBLICADA (Mac + Windows,
+  commit b649071 = b31d35b + só PROJETO.md). Diagnóstico TUDO OK nos dois; sintéticos 41/41.
 - 25–26/10: o JP diz que a 1.0.2 "funciona perfeitamente" até agora.
 - 22/10, 23h: o JP aprovou a Montagem 17 (Mac e Windows) → versão oficial 1.0.2 do commit 66ec74b (+ só GUIA).
   PUBLICADA (23/10 de madrugada): "Revisor de Vídeos 1.0.2", TUDO OK nos dois, sem PowerShell; Mac 40/41 (o +7
