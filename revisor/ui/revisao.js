@@ -79,15 +79,19 @@ async function screenRevisao(root, arg) {
   const cleanups = [];
   // estado usado também ao sair da tela (declarado antes de qualquer "return")
   let cmtTimer = null, cmtFrame = null, cmtEl = null, savedEl = null;
+  let genTimer = null, genEl = null, genSaved = null;   // comentário geral do vídeo
   let clip = null;
   let play = null;            // Espaço: o vídeo inteiro tocando no visor
+  let gone = false;           // a tela já foi trocada: as esperas em andamento não refazem a tela
   const ED = EDITOR();        // modo editor: checagem antes de entregar
+  // Ao sair da tela. Os timers saem PRIMEIRO e cada passo é separado: antes, com o vídeo ainda
+  // analisando, um erro aqui deixava o timer da espera vivo e a página se refazia a cada 1,5 s para
+  // sempre (bug visto pelo JP em 06/11: não dava para escrever nem escolher o editor).
   screenCleanup = () => {
-    flushComment();
-    closeClip();
-    if (play) { const p = play; haltPlay(); dropPlayer(p); }
+    gone = true;
     timers.forEach(clearInterval);
-    cleanups.forEach((f) => { try { f(); } catch (e) { /* nada */ } });
+    const steps = [flushComment, closeClip, () => { if (play) { const p = play; haltPlay(); dropPlayer(p); } }, ...cleanups];
+    steps.forEach((f) => { try { f(); } catch (e) { console.error("revisao: ao sair", e); } });
     document.body.classList.remove("rv-on");
     if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
   };
@@ -246,6 +250,7 @@ async function screenRevisao(root, arg) {
     timers.push(setInterval(async () => {
       try {
         const nv = await api("video?n=" + V.n);
+        if (gone) return;
         if (nv.ready) render(); else { V = nv; showWait(); drawTabs(); drawNext(); }
       } catch (e) { /* tenta de novo */ }
     }, 1500));
@@ -648,7 +653,6 @@ async function screenRevisao(root, arg) {
   }
   // ---- comentário geral do vídeo (pedido do JP, 21/10): sem tempo, vale para o vídeo todo
   // ("aumentar o áudio geral", "ajustar a cor da pele"). Vai para o Resumo final, a cópia e o SRT.
-  let genTimer = null, genEl = null, genSaved = null;
   async function saveGeneral(text) {
     try {
       const r = await api("general", { id: vid, text });

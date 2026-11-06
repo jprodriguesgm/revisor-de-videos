@@ -291,8 +291,9 @@ async function screenEnviar(root) {
     h("aside", { class: "final-side" }, trCard, hoursCard, h("div", { style: { flex: 1 } }),
       h("a", { class: "btn linkish", href: "#/revisao/1", text: "← Voltar à checagem" }))));
 
+  const seq = screenSeq;
   if (running) poll = setInterval(async () => {
-    try { const j = await api("job"); if (j.videos.filter((v) => v.status === "ok").length !== vids.filter((v) => v.row).length || j.state === "done") render(); }
+    try { const j = await api("job"); if (seq === screenSeq && (j.videos.filter((v) => v.status === "ok").length !== vids.filter((v) => v.row).length || j.state === "done")) render(); }
     catch (e) { /* tenta de novo */ }
   }, 3000);
 }

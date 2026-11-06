@@ -130,6 +130,7 @@ const EDITOR = () => !!(S && S.settings && S.settings.mode === "editor");
 let S = null;          // /api/state
 let poll = null;       // timer da tela atual
 let screenCleanup = null;   // a tela de revisão tira atalhos e timers ao sair
+let screenSeq = 0;          // muda a cada tela desenhada: uma espera em andamento da tela antiga não refaz a nova
 
 function route() {
   const parts = (location.hash || "#/inicio").slice(2).split("/");
@@ -167,6 +168,7 @@ async function render() {
 }
 
 async function renderNow() {
+  screenSeq++;
   clearInterval(poll);
   poll = null;
   if (screenCleanup) {
@@ -1004,10 +1006,13 @@ async function screenAnalise(root) {
     return q;
   }
 
+  const seq = screenSeq;
   async function tick() {
     let j;
     try { j = await api("job"); } catch (e) { toast(e.message, true); return; }
+    if (seq !== screenSeq) return;          // a tela já foi trocada
     const q = await drawQueue();
+    if (seq !== screenSeq) return;
     if (j.state === "idle") {          // esta pasta está na fila, esperando a vez
       const me = q && q.entries.find((e) => e.open);
       rows.replaceChildren(...j.videos.map((v) => h("div", { class: "trow" },
@@ -1242,8 +1247,9 @@ async function screenResumo(root) {
       h("span", { class: "muted", style: { fontSize: "12px", textAlign: "center" },
         text: "O editor pode ser marcado agora ou na aba de cada vídeo." }))));
 
+  const seq = screenSeq;
   if (running) poll = setInterval(async () => {
-    try { const j = await api("job"); if (j.videos.filter((v) => v.status === "ok").length !== ready.length || j.state === "done") render(); }
+    try { const j = await api("job"); if (seq === screenSeq && (j.videos.filter((v) => v.status === "ok").length !== ready.length || j.state === "done")) render(); }
     catch (e) { /* tenta de novo */ }
   }, 3000);
 }
