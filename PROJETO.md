@@ -1040,7 +1040,9 @@ Limites conhecidos da etapa 2:
 ## Situação
 - 23/11: pedidos de cartão do Planner, revisão reconhecida pelos vídeos, transcrição pronta (e manual) e Google
   Drive opcional — feitos e testados (pytest + Chromium). Ver "Pedidos do JP de 23/11/2026". "Montagem 32 (teste)"
-  (commit 1c9ce45): Mac e Windows TUDO OK, sintéticos 41/41. Esperando o teste do JP.
+  (commit 1c9ce45): Mac e Windows TUDO OK, sintéticos 41/41. O JP testou ("funcionando perfeitamente"), pediu abrir
+  o .txt exportado no cartão e mandou publicar → VERSÃO OFICIAL 1.2.0 PUBLICADA (commit 383cbfd), Mac + Windows OK.
+  PRÓXIMO: etapa 3 (Subir no Drive com transcrição); formato real do .txt do cartão quando a equipe mandar.
 - Etapa 5 (Resumo final, SRT, pacote entre computadores, relatório do mês, configurações) — feita
   (19/10), testada no Chromium com as aulas sintéticas. Ver "Etapa 5".
 - Etapa 4 (tela de revisão completa: itens, comentários, cópia, trecho de 8 s, zoom, G, P, atalhos,
