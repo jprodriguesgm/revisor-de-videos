@@ -83,14 +83,20 @@ def find(reviews_root: Path, folder_name: str) -> dict | None:
     key = project_key(folder_name)
     p = path_for(reviews_root, folder_name)
     cands = [p] if p.exists() else []
-    if not cands:   # nome com outra grafia (acento decomposto, maiúscula)
+    if not cands:   # nome com outra grafia (acento decomposto, maiúscula) ou pasta ligada a uma revisão
+        alias_hit = None
         for q in Path(reviews_root).glob("*/revisao.json"):
             try:
-                if json.loads(q.read_text(encoding="utf-8")).get("key") == key:
-                    cands.append(q)
-                    break
+                r = json.loads(q.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
                 continue
+            if r.get("key") == key:
+                cands.append(q)
+                break
+            if alias_hit is None and key in (r.get("aliases") or []):
+                alias_hit = q
+        if not cands and alias_hit is not None:
+            cands.append(alias_hit)
     for q in cands:
         try:
             return json.loads(q.read_text(encoding="utf-8"))
@@ -126,6 +132,44 @@ def list_saved(reviews_root: Path) -> list[dict]:
         })
     out.sort(key=lambda x: x.get("updated") or "", reverse=True)
     return out
+
+
+def find_similar(reviews_root: Path, folder_name: str, files: list[str], limit: int = 3) -> list[dict]:
+    """Revisões salvas com os MESMOS vídeos (pelo nome do arquivo) de uma pasta com outro nome
+    (pedido do JP, 23/11: baixou de novo para a rodada 2 e deu outro nome à pasta).
+    Vale quando pelo menos metade dos vídeos da pasta tem o mesmo nome na revisão."""
+    key = project_key(folder_name)
+    want = {_name_key(f) for f in files if f}
+    if not want:
+        return []
+    need = max(1, (len(want) + 1) // 2)
+    out = []
+    for q in Path(reviews_root).glob("*/revisao.json"):
+        try:
+            r = json.loads(q.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        if r.get("key") == key or key in (r.get("aliases") or []):
+            continue
+        have = {_name_key(v.get("file", "")) for v in r.get("videos", [])}
+        hits = sorted(f for f in files if _name_key(f) in have)
+        if len(hits) < need:
+            continue
+        out.append({"project": r.get("project"), "professor": r.get("professor"), "curso": r.get("curso"),
+                    "entrega": r.get("entrega"), "updated": r.get("updated"),
+                    "comments": sum(comment_total(v) for v in r.get("videos", [])),
+                    "matches": hits, "match_n": len(hits), "total": len(want)})
+    out.sort(key=lambda x: (x["match_n"], x.get("updated") or ""), reverse=True)
+    return out[:limit]
+
+
+def link_folder(rev: dict, folder: str | Path) -> None:
+    """Liga uma pasta com outro nome a esta revisão: o nome da pasta vira um apelido dela."""
+    folder = Path(folder)
+    k = project_key(folder.name)
+    if k != rev.get("key") and k not in (rev.get("aliases") or []):
+        rev.setdefault("aliases", []).append(k)
+    rev["folder"] = str(folder)
 
 
 def merge_videos(rev: dict, found: list[dict]) -> None:
@@ -167,8 +211,9 @@ def _name_key(file: str) -> str:
 
 
 def suggest_professor(folder_name: str) -> str:
-    """"Carlos 21:09" → "Carlos" (a pasta do editado leva o nome e a data/hora)."""
-    n = re.sub(r"\s+\d{1,2}[:h.\-]\d{2}\s*$", "", folder_name.strip())
+    """"Carlos 21:09" → "Carlos"; "2026 11 10 Carlos" → "Carlos" (a pasta leva o nome e a data/hora)."""
+    n = re.sub(r"^\d{4}[ ._\-]\d{1,2}[ ._\-]\d{1,2}\s+", "", folder_name.strip())   # "2026 11 10 Nome"
+    n = re.sub(r"\s+\d{1,2}[:h.\-]\d{2}\s*$", "", n)
     n = re.sub(r"\s+\d{1,2}[/.\-]\d{1,2}([/.\-]\d{2,4})?\s*$", "", n)
     return n.strip(" -_")
 

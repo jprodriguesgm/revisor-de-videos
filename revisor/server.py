@@ -24,8 +24,8 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import numpy as np
 
-from . import (__version__, analyze, appdata, dialogs, export, frames, jobs, life, media, review, rounds, scopes, spell,
-               summary, timereport)
+from . import (__version__, analyze, appdata, cartao, dialogs, drive, export, frames, jobs, life, media, review, rounds,
+               scopes, spell, summary, timereport, transcricao)
 from .timecode import parse_rate
 
 UI_DIR = Path(__file__).resolve().parent / "ui"
@@ -245,7 +245,15 @@ class App:
             entrega = datetime.fromtimestamp(sc["newest_mtime"]).date().isoformat()
             entrega_from = "data dos arquivos"
         tag = (prev or {}).get("nome_tarja") or s["tag_names"].get(prof) or ""
+        similar = []
+        if sc["ok"] and prev is None:
+            similar = review.find_similar(self.reviews_root(), sc["name"],
+                                          [v["file"] for v in sc["videos"] if not v.get("error")])
         return {
+            "project": (prev or {}).get("project") or sc["name"],
+            "linked": bool(prev and review.project_key(prev.get("project") or "") != review.project_key(sc["name"])),
+            "similar": similar,
+            "folder_date": cartao.folder_date(sc["name"]),
             "scan": {k: sc[k] for k in ("ok", "folder", "name", "total_s", "report", "warnings", "error")}
             | {"count": sum(1 for v in sc["videos"] if not v.get("error")),
                "videos": [{k: v[k] for k in ("file", "duration", "error", "detail")}
@@ -281,6 +289,9 @@ class App:
         rev["curso"] = (body.get("curso") or "").strip()
         rev["disciplina"] = (body.get("disciplina") or "").strip()
         rev["nome_tarja"] = (body.get("nome_tarja") or "").strip()
+        grav = cartao.parse_date(body.get("data_gravacao") or "")
+        if grav:
+            rev["gravacao"] = grav                   # do cartão colado (só registro)
         editor_mode = s.get("mode") == "editor"
         if not rev.get("entrega_locked"):
             ent = review.parse_date(body.get("entrega"))
@@ -342,6 +353,175 @@ class App:
         rev["folder_warnings"] = [f"{v['file']}: {v['error']}." for v in sc["videos"] if v.get("error")] + sc["warnings"]
         for v in rev["videos"]:
             v["report_entry"] = sc["matches"].get(v["file"])
+
+    # ---------------------------------------------------------------- cartão do Planner (23/11)
+    @staticmethod
+    def read_card(body: dict) -> dict:
+        text = str(body.get("text") or "")
+        if len(text) > 50000:
+            raise ApiError("Texto grande demais para um cartão.")
+        card = cartao.parse(text)
+        folder = (body.get("folder") or "").strip()
+        name = Path(folder).name if folder else None
+        return {"card": card, "check": cartao.check(card, name)}
+
+    # ---------------------------------------------------------------- pasta com outro nome (23/11)
+    def link_review(self, body: dict) -> dict:
+        """Liga a pasta escolhida a uma revisão salva com os mesmos vídeos (vira a rodada seguinte)."""
+        project = str(body.get("project") or "")
+        folder = (body.get("folder") or "").strip()
+        if not project or not folder:
+            raise ApiError("Faltou a revisão ou a pasta.")
+        p = Path(folder).expanduser().resolve()
+        if not p.is_dir():
+            raise ApiError("Pasta não encontrada.")
+        rev = review.find(self.reviews_root(), project)
+        if rev is None:
+            raise ApiError("Revisão não encontrada.", 404)
+        if self.review is not None and self.review.get("key") == rev.get("key"):
+            rev = self.review                 # a revisão aberta é esta: muda a da memória
+        with self.lock:
+            review.link_folder(rev, p)
+            review.save(self.reviews_root(), rev)
+        return {"ok": True, "project": rev["project"]}
+
+    # ---------------------------------------------------------------- transcrição adicionada à mão (23/11)
+    def import_transcript(self, body: dict) -> dict:
+        rev = self._need_review()
+        vid = str(body.get("id") or "")
+        if not vid.isalnum():
+            raise ApiError("Escolha o vídeo.")
+        v = self.video_entry(vid)
+        src = (body.get("path") or "").strip()
+        if not src:
+            raise ApiError("Escolha o arquivo da transcrição.")
+        vpath = self.video_path(vid)
+        if not vpath:
+            raise ApiError("O vídeo não está neste computador: não dá para ligar a transcrição a ele.")
+        dur = float(v.get("duration") or 0)
+        try:
+            data = transcricao.import_file(src, v["file"], dur)
+        except transcricao.TranscriptError as e:
+            raise ApiError(str(e))
+        target = transcricao.target_dir(Path(vpath))
+        try:
+            out = transcricao.write(target, v["file"], data)
+        except OSError as e:
+            raise ApiError(f"Não deu para gravar a transcrição na pasta dos vídeos ({e.strerror or e}).")
+        # a fala deste vídeo é refeita com a transcrição (o resto da análise fica como está)
+        folder = Path(rev.get("folder") or "")
+        sc = jobs.scan_folder(folder) if folder.is_dir() else None
+        queued = False
+        if sc and sc["ok"]:
+            self._acache.pop(vid, None)
+            busy = self._running_entry()
+            queued = busy is not None and busy["key"] != qkey(rev["project"])
+            with self.lock:
+                self.scan = sc
+                self._enqueue(rev, sc, front=True)
+            self._pump()
+        return {"ok": True, "file": out.name, "folder": str(out.parent), "approx": bool(data.get("aproximada")),
+                "words": len(data["words"]), "queued": queued}
+
+    # ---------------------------------------------------------------- Google Drive opcional (23/11)
+    def drive_conf(self) -> dict:
+        """Configuração do Drive com o que falta preenchido pelo Subir no Drive (quando existe)."""
+        s = self.settings
+        sub = drive.defaults_from_subir()
+        rc = drive.find_rclone(s.get("drive_rclone"))
+        return {"on": bool(s.get("drive_on")), "rclone": rc.get("path"), "rclone_from": rc.get("from"),
+                "rclone_saved": s.get("drive_rclone"),
+                "config": s.get("drive_config") or rc.get("config") or sub.get("config"),
+                "remote": s.get("drive_remote") or sub.get("remote") or "drive",
+                "root": s.get("drive_root") if s.get("drive_root") is not None else (sub.get("root") or ""),
+                "root_from_subir": s.get("drive_root") is None and bool(sub.get("root")),
+                "dest": s.get("drive_dest") or "", "name": s.get("drive_name") or drive.NAME_DEFAULT,
+                "transcripts": bool(s.get("drive_transcripts", True)), "open_after": bool(s.get("drive_open_after", True)),
+                "subir": bool(sub)}
+
+    def _rclone(self, c: dict | None = None) -> drive.Rclone:
+        c = c or self.drive_conf()
+        return drive.Rclone(c["rclone"], c.get("config"), c["remote"])
+
+    def drive_test(self, body: dict) -> dict:
+        c = self.drive_conf()
+        for k in ("rclone", "remote", "root"):
+            if body.get(k) is not None:
+                c[k] = str(body[k]).strip()
+        if body.get("rclone"):
+            c["rclone"] = str(Path(c["rclone"]).expanduser())
+        try:
+            rc = self._rclone(c)
+            remotes = rc.remotes()
+            if c["remote"] not in remotes:
+                return {"ok": False, "remotes": remotes,
+                        "error": f"O rclone não tem a conexão “{c['remote']}”." + (f" Conexões do Google Drive: {', '.join(remotes)}." if remotes else "")}
+            email = rc.email()
+            n = len(rc.lsjson(rc.at(None, c["root"].strip("/")), "--dirs-only", "--max-depth", "1", timeout=60))
+        except drive.DriveError as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "remotes": remotes, "email": email, "folders": n, "root": c["root"]}
+
+    def drive_plan(self, body: dict) -> dict:
+        c = self.drive_conf()
+        if not c["on"]:
+            raise ApiError("O Google Drive está desligado (Configurações → Google Drive).")
+        if not c["dest"] or not Path(c["dest"]).expanduser().is_dir():
+            raise ApiError("Escolha a pasta onde baixar em Configurações → Google Drive.")
+        try:
+            pl = drive.plan(self._rclone(c), c["root"].strip("/"), str(body.get("link") or ""), c["dest"], c["name"],
+                            c["transcripts"])
+        except drive.DriveError as e:
+            raise ApiError(str(e))
+        self._drive_plan = pl
+        return self._plan_view(pl, pl["name"])
+
+    def _plan_view(self, pl: dict, name: str) -> dict:
+        dest = Path(pl["dest_root"]).expanduser() / name if name else None
+        prev = review.find(self.reviews_root(), name) if name else None
+        return {"ok": True, "name": name, "loc": pl["loc"], "videos": pl["videos"], "total": pl["total"],
+                "dest_root": pl["dest_root"], "exists": bool(dest and dest.is_dir()),
+                "prev": None if not prev else {"project": prev["project"], "entrega": prev.get("entrega"),
+                                               "comments": sum(review.comment_total(v) for v in prev.get("videos", []))}}
+
+    def drive_check_name(self, body: dict) -> dict:
+        pl = getattr(self, "_drive_plan", None)
+        if pl is None:
+            raise ApiError("Cole o link de novo.")
+        return self._plan_view(pl, drive.make_name("{data}", str(body.get("name") or ""), ""))
+
+    def drive_start(self, body: dict) -> dict:
+        pl = getattr(self, "_drive_plan", None)
+        if pl is None:
+            raise ApiError("Cole o link de novo.")
+        d = getattr(self, "_drive_dl", None)
+        if d is not None and d.state in ("running", "transcricoes"):
+            raise ApiError("Já tem um download em andamento.")
+        c = self.drive_conf()
+        try:
+            dl = drive.Download(self._rclone(c), pl, str(body.get("name") or pl["name"]), c["transcripts"])
+        except drive.DriveError as e:
+            raise ApiError(str(e))
+        self._drive_dl = dl
+        dl.start()
+        return {"ok": True, **dl.view()}
+
+    def drive_job(self) -> dict:
+        d = getattr(self, "_drive_dl", None)
+        out = {"on": bool(self.settings.get("drive_on")), "open_after": bool(self.settings.get("drive_open_after", True))}
+        return out | ({"job": d.view()} if d is not None else {"job": None})
+
+    def drive_cancel(self) -> dict:
+        d = getattr(self, "_drive_dl", None)
+        if d is not None:
+            d.cancel()
+        return {"ok": True}
+
+    def drive_forget(self) -> dict:
+        d = getattr(self, "_drive_dl", None)
+        if d is not None and d.state not in ("running", "transcricoes"):
+            self._drive_dl = None
+        return {"ok": True}
 
     # ---------------------------------------------------------------- relatório de tempo (feito pelo app)
     def time_report(self, body: dict) -> dict:
@@ -1560,8 +1740,20 @@ class App:
         pick("my_name", lambda v: isinstance(v, str) and len(v.strip()) <= 40)
         if "my_name" in upd:
             upd["my_name"] = " ".join(upd["my_name"].split())
-        for k in ("transcribe", "spell", "spell_en", "spell_la"):
+        for k in ("transcribe", "spell", "spell_en", "spell_la", "drive_on", "drive_transcripts", "drive_open_after"):
             pick(k, lambda v: isinstance(v, bool))
+        opt_path = lambda v: v is None or (isinstance(v, str) and len(v) <= 1000)
+        pick("drive_rclone", opt_path)
+        pick("drive_config", opt_path)
+        pick("drive_dest", opt_path)
+        pick("drive_root", lambda v: v is None or (isinstance(v, str) and len(v) <= 300))
+        pick("drive_remote", lambda v: isinstance(v, str) and re.fullmatch(r"[\w.\- ]{1,60}", v) is not None)
+        pick("drive_name", drive.valid_template)
+        for k in ("drive_rclone", "drive_config", "drive_dest", "drive_root"):
+            if k in upd:
+                upd[k] = (upd[k] or "").strip() or None
+        if upd.get("drive_root"):
+            upd["drive_root"] = upd["drive_root"].strip("/")
         for k in ("error_phrases", "generic_names"):
             if k in body:
                 v = body[k]
@@ -1861,7 +2053,7 @@ class Handler(BaseHTTPRequestHandler):
                 "native_dialog": os.name != "nt",
                 "settings": {k: s[k] for k in ("vinheta_in", "vinheta_out", "sensitivity", "group_gap_s", "spell",
                                                "transcribe", "history", "last_folder", "time_format",
-                                               "last_raw_folder", "mode", "my_name")},
+                                               "last_raw_folder", "mode", "my_name", "drive_on")},
                 "editors": appdata.active_editors(s),
                 "vinhetas_ok": {"in": bool(s.get("vinheta_in") and Path(s["vinheta_in"]).is_file()),
                                 "out": bool(s.get("vinheta_out") and Path(s["vinheta_out"]).is_file())},
@@ -1886,8 +2078,10 @@ class Handler(BaseHTTPRequestHandler):
         if ep == "ls":
             if not q.get("path"):
                 return self._json({"roots": dialogs.roots()})
+            exts = tuple("." + e.strip().lower() for e in (q.get("exts") or "").split(",") if e.strip().isalnum())
             try:
-                return self._json(dialogs.listdir(q["path"]) | {"roots": dialogs.roots()})
+                d = dialogs.listdir(q["path"], exts) if exts else dialogs.listdir(q["path"])
+                return self._json(d | {"roots": dialogs.roots()})
             except FileNotFoundError:
                 raise ApiError("Pasta não encontrada.", 404)
         if ep == "scope.png":
@@ -1953,6 +2147,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._download(export.month_txt(rep, read).encode("utf-8"), name + ".txt",
                                       "text/plain; charset=utf-8")
             return self._download(export.month_csv(rep), name + ".csv", "text/csv; charset=utf-8")
+        if ep == "drive":
+            return self._json(APP.drive_conf())
+        if ep == "drive/job":
+            return self._json(APP.drive_job())
         if ep == "settings/all":
             return self._json(APP.settings_view())
         if ep == "settings/equipe.txt":
@@ -1974,6 +2172,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if ep == "start":
             return self._json(APP.start(body))
+        if ep == "drive/test":
+            return self._json(APP.drive_test(body))
+        if ep == "drive/plan":
+            return self._json(APP.drive_plan(body))
+        if ep == "drive/name":
+            return self._json(APP.drive_check_name(body))
+        if ep == "drive/start":
+            return self._json(APP.drive_start(body))
+        if ep == "drive/cancel":
+            return self._json(APP.drive_cancel())
+        if ep == "drive/forget":
+            return self._json(APP.drive_forget())
+        if ep == "card":
+            return self._json(APP.read_card(body))
+        if ep == "review/link":
+            return self._json(APP.link_review(body))
+        if ep == "transcript/import":
+            return self._json(APP.import_transcript(body))
         if ep == "timereport":
             return self._json(APP.time_report(body))
         if ep == "dialog":

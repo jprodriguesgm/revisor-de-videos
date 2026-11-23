@@ -9,7 +9,7 @@ import threading
 import time
 from pathlib import Path
 
-from . import analyze, media, report, speech, summary, vinheta
+from . import analyze, media, report, speech, summary, transcricao, vinheta
 
 # estimativa antes de medir (máquina virtual do Mac: ~3 s/min imagem + ~1 s/min texto + ~9 s/min fala)
 GUESS_S_PER_MIN = {"base": 4.0, "speech": 9.0}
@@ -92,6 +92,7 @@ class AnalysisJob:
         self._thread = None
         self._lock = threading.Lock()
         self._cache_ok: dict[str, bool] = {}     # vídeo esperando a vez: a análise do cache vale para este arquivo?
+        self._tr: dict[str, dict] = {}           # transcrição pronta de cada vídeo (procurada uma vez)
 
     # ------------------------------------------------------------ controle
     def start(self):
@@ -220,9 +221,32 @@ class AnalysisJob:
             # onde as falas são ouvidas (placa de vídeo ou processador), quando "Ouvir as falas" está ligado
             "speech_engine": speech.engine_view() if self.settings.transcribe else None,
             "videos": [{k: v[k] for k in ("n", "id", "file", "duration", "status", "error", "detail", "pct", "row")}
-                       | {"cached": v["status"] == "wait" and self._cached(v)}
+                       | {"cached": v["status"] == "wait" and self._cached(v), "tr": self.transcript_view(v)}
                        for v in self.videos],
         }
+
+    def transcript_view(self, v: dict) -> dict | None:
+        """Para a tela de análise: o vídeo usa transcrição pronta? ("pronta", "nao_bate", "invalida" ou None)."""
+        if not v.get("id"):
+            return None
+        with self._lock:
+            a = self.analyses.get(v["id"])
+        if a is not None:
+            sp = a.get("speech") or {}
+            if sp.get("source") == "pronta":
+                return {"status": "pronta", "approx": bool(sp.get("approx")), "file": sp.get("file")}
+            st = sp.get("pronta")
+            return {"status": st, "motivo": sp.get("pronta_motivo")} if st else None
+        hit = self._tr.get(v["id"])
+        if hit is None:
+            try:
+                r = transcricao.lookup(v["path"], v["duration"])
+            except OSError:
+                r = {"status": "nenhuma"}
+            st = {"ok": "pronta"}.get(r["status"], r["status"])
+            hit = self._tr[v["id"]] = {"status": None if st == "nenhuma" else st, "motivo": r.get("motivo"),
+                                       "approx": bool(((r.get("data") or {}).get("aproximada")))}
+        return hit if hit["status"] else None
 
     def _cached(self, v: dict) -> bool:
         """"Análise anterior" só quando ela é deste mesmo arquivo (lido uma vez por análise)."""

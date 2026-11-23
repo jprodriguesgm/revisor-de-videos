@@ -738,6 +738,57 @@ clique na linha do tempo tocando, → pausa, parar nos avisos, C, modo editor (I
 Pronto para enviar, gerar de novo, Configurações, 1100 px). O Chromium do Playwright não toca H.264/AAC:
 para o teste do play, as aulas sintéticas são convertidas para AV1 + Opus em .mp4 (ver o docstring).
 
+## Pedidos do JP de 23/11/2026 (cartão, rodadas, transcrição pronta, Drive)
+Telas aprovadas antes (artifact "Revisor de Vídeos — novas telas", tipo Design, claude.ai), com o pedido extra do
+botão "Adicionar transcrição manualmente". Decisões do JP: opção A para o cartão (colar o texto; sem Microsoft
+Graph/login, o app continua offline); transcrição feita no envio pelo "Subir no Drive" (etapa 3, ainda não feita);
+Drive opcional, só nas configurações, desligado por padrão; os editores do Windows (outro campus) usam o servidor
+da PUC e não mudam nada.
+1. COLAR O CARTÃO (revisor/cartao.py, POST /api/card {text, folder}). Lê "Campo: valor" (tira "> ###", negrito,
+   links [x](mailto:…)). "Nome que será utilizado na aula" → professor E tarja (o mesmo das pastas); sem ele, o
+   "Nome completo". Curso, Disciplina. "Data da gravação" só para conferir com a data do começo do nome da pasta
+   ("AAAA MM DD Professor"): diferente → aviso para corrigir o cartão no Planner. Vazio/"não sei"/"-" = nada.
+   Telefone, e-mail, matrícula etc. não são usados nem guardados. rev["gravacao"] = data do cartão (registro).
+   Início (só modo revisor): faixa "Tem o cartão do Planner?" + janela (texto à esquerda, o que leu à direita);
+   campos marcados "do cartão" (some ao mudar à mão). review.suggest_professor tira a data do começo do nome.
+2. REVISÃO RECONHECIDA PELOS VÍDEOS (o JP baixa de novo e às vezes dá outro nome à pasta → revisão nova).
+   review.find_similar: revisões salvas com ≥ metade dos vídeos da pasta com o mesmo nome (_name_key) →
+   /api/folder devolve "similar" (até 3). "Continuar nessa revisão" → POST /api/review/link {project, folder}:
+   o nome da pasta vira apelido (rev["aliases"], chaves project_key) e rev["folder"] = pasta nova; review.find
+   também acha pelo apelido. O project NÃO muda (horas do mês e fila continuam pelo nome antigo); /api/folder
+   devolve "project" e "linked"; a tela compara a fila por project (runningName). Rodada seguinte = regra antiga
+   do merge_videos (mesmo nome, outra duração). "É outra" só esconde o aviso para aquela pasta.
+3. TRANSCRIÇÃO PRONTA (revisor/transcricao.py). Arquivo "<vídeo sem extensão>.transcricao.json" (formato
+   "revisor-transcricao" v1: video{arquivo,duracao}, motor, aproximada, words [[s,e,txt,p]], segments). Procura em
+   "Transcrições" dentro da pasta dos vídeos, "Transcrições" ao lado dela (pasta do dia do Drive) e na própria
+   pasta. Vale só com a duração ±0,5 s; senão "nao_bate" e o app ouve sozinho. analyze.run_speech usa a pronta
+   ANTES de olhar "Ouvir as falas" (vale até desligado) → speech {source: "pronta", file, approx, at}. No cache:
+   analyze.newer_transcript refaz só a fala quando aparece uma transcrição mais nova que a fala guardada.
+   jobs.snapshot: cada vídeo tem "tr" (pronta/nao_bate/invalida). Análise: etiqueta por vídeo + cartão
+   "Transcrições prontas" com "Adicionar transcrição manualmente" (POST /api/transcript/import {id, path}):
+   aceita .json do Revisor, JSON do Whisper (openai/mlx com words, ou whisper.cpp) e .srt/.vtt (tempo por frase:
+   palavras espalhadas pelo nº de letras, "aproximada"); recusa se passar da duração + 2 s; grava a cópia em
+   "Transcrições" ao lado dos vídeos e põe a pasta na frente da fila (só a fala do vídeo é refeita).
+   /api/ls aceita exts=json,srt,vtt (navegador de arquivos do app, kind "transcript").
+4. GOOGLE DRIVE OPCIONAL (revisor/drive.py). Settings drive_on (False), drive_rclone, drive_config,
+   drive_remote ("drive"), drive_root (pasta das gravações; padrão = 2ª linha do config.txt do Subir no Drive),
+   drive_dest, drive_name ("{data} {professor}"; tokens data/professor/codigo), drive_transcripts, drive_open_after.
+   O rclone é achado: configurações → env.sh do Subir no Drive (~/Library/Application Support/SubirNoDrive: PATH e
+   RCLONE_CONFIG; config.txt = conexão, pasta inicial, e-mail) → PATH → lugares comuns. Link → id da pasta;
+   drive.locate lista as pastas da pasta das gravações (lsjson --dirs-only -R --max-depth 3 --fast-list, guardado
+   10 min) e acha curso/dia pelo id (link da Saída ou do dia). Pasta fora: baixa, mas o nome é digitado.
+   Baixa com "remote,root_folder_id=ID:" + --files-from (só vídeos) e --use-json-log --stats 1s (progresso);
+   depois as transcrições do dia para <pasta>/Transcrições. Rotas: GET /api/drive, /api/drive/job; POST
+   /api/drive/test, plan, name, start, cancel, forget. Configurações → Google Drive (só modo revisor): chave
+   liga/desliga, rclone, conexão + Testar, pasta das gravações, destino, modelo do nome com exemplo, opções.
+   Início: botão "Baixar do Drive" (só ligado), janela (link → caminho, nome editável, aviso de revisão que já
+   existe = rodada seguinte, pasta que já existe, vídeos com/sem transcrição) e progresso; ao terminar abre a
+   pasta no Início (ou aviso no Início se a janela foi fechada).
+Testes: tests/test_cartao_rodadas_transcricao.py, tests/test_drive.py (rclone de mentira: pasta local + ids.json),
+tools/ui_cartao_drive.py (Chromium: cartão, revisão reconhecida, transcrição pronta e manual, Drive; capturas
+docs/guia/32–38). FALTA: o JP testar com o Planner e o Drive de verdade; etapa 3 (Subir no Drive vira app que
+transcreve com o mesmo whisper.cpp do Revisor em paralelo ao envio e sobe em "Transcrições" do dia).
+
 ## Exportar e importar a equipe (27/10/2026, versão 1.1.1)
 Pedido de outras unidades (uma equipe tem 30+ pessoas): uma pessoa cadastra, as outras importam.
 - Configurações → Equipe: "Importar equipe" e "Exportar equipe"; no Início, o aviso "Primeira vez?" também
@@ -984,6 +1035,9 @@ Limites conhecidos da etapa 2:
   UB-Mannheim) na pasta bin/; TESSDATA vem de revisor/data/tessdata.
 
 ## Situação
+- 23/11: pedidos de cartão do Planner, revisão reconhecida pelos vídeos, transcrição pronta (e manual) e Google
+  Drive opcional — feitos e testados (pytest + Chromium). Ver "Pedidos do JP de 23/11/2026". Montagem de teste
+  esperando o JP.
 - Etapa 5 (Resumo final, SRT, pacote entre computadores, relatório do mês, configurações) — feita
   (19/10), testada no Chromium com as aulas sintéticas. Ver "Etapa 5".
 - Etapa 4 (tela de revisão completa: itens, comentários, cópia, trecho de 8 s, zoom, G, P, atalhos,
@@ -1133,6 +1187,8 @@ Limites conhecidos da etapa 2:
 - nametag.py: regra da tarja (ok / acento / diferente / genérico / não achada / lido).
 - tools/text_only.py: roda só a etapa 2 em análises do cache (calibragem).
 - speech.py: transcrição (whisper-cli em pedaços), frases de erro, takes repetidos.
+- cartao.py: ler o cartão do Planner colado. transcricao.py: transcrição pronta (achar, conferir, importar SRT/VTT/
+  JSON, gravar). drive.py: Google Drive opcional pelo rclone (achar o rclone, link → pasta, baixar com progresso).
 - audio.py também: corte no meio da fala nos cortes do vídeo (predição linear).
 - report.py: leitura do txt de tempo e casamento txt × vídeos da pasta. analyze.py: orquestra e grava o cache
   (ANALYSIS_VERSION muda quando a análise muda: o cache antigo é refeito).

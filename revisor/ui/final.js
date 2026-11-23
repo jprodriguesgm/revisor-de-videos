@@ -517,7 +517,7 @@ async function screenRelatorio(root) {
 // ====================================================================== Configurações
 
 const CFG_SECTIONS = [["modo", "Modo do app"], ["cache", "Cache"], ["pastas", "Pastas"], ["analise", "Análise"], ["equipe", "Equipe"],
-  ["copia", "Cópia e envio ao editor"], ["ortografia", "Ortografia e dicionário"]];
+  ["copia", "Cópia e envio ao editor"], ["ortografia", "Ortografia e dicionário"], ["drive", "Google Drive"]];
 const CFG_SECTIONS_EDITOR = ["modo", "cache", "pastas", "analise", "ortografia"];   // o editor não usa Equipe nem Cópia
 
 async function screenConfig(root, arg) {
@@ -751,6 +751,105 @@ async function screenConfig(root, arg) {
       h("button", { class: "btn", text: "Adicionar", onclick: addW })),
     h("span", { class: "hint", text: "Ao tocar em “Aceitar” num aviso da revisão, a palavra entra nesta lista automaticamente. A lista vale para todos os cursos." }));
 
+  // ---- Google Drive (opcional, 23/11): baixar a pasta Saída já com o nome no padrão e as transcrições
+  const sDrive = sec("drive");
+  async function drawDrive() {
+    let D;
+    try { D = await api("drive"); } catch (e) { fill(sDrive, h2("Google Drive"), h("span", { class: "bad", text: e.message })); return; }
+    const sw = h("button", { class: "switch" + (D.on ? " on" : ""), type: "button", role: "switch", "aria-checked": D.on ? "true" : "false",
+      "aria-label": D.on ? "Desligar o Google Drive" : "Ligar o Google Drive",
+      onclick: async () => {
+        const upd = { drive_on: !D.on };
+        // ligando pela primeira vez: grava o que veio do Subir no Drive (o usuário pode trocar depois)
+        if (!D.on && D.root_from_subir) upd.drive_root = D.root;
+        if (await save(upd, D.on ? "Google Drive desligado: o app não usa internet." : "Google Drive ligado.")) {
+          if (S && S.settings) S.settings.drive_on = !D.on;
+          drawDrive();
+        }
+      } });
+    const head = h("div", { class: "cfg-hrow" },
+      h("div", {}, h("h2", {}, "Google Drive ", h("span", { class: "opt", style: { fontSize: "13px", fontWeight: 400, color: "var(--faint)" }, text: "(opcional)" })),
+        h("p", { class: "cfg-p", text: "Baixa as aulas da pasta Saída direto para a pasta de revisão, já com o nome no padrão e com as transcrições prontas." })),
+      sw);
+    if (!D.on) {
+      fill(sDrive, head, h("div", { class: "cfg-note" }, icon("info"), h("span", {},
+        h("b", { style: { color: "var(--text)", fontWeight: 500 }, text: "Desligado. " }),
+        "O app não usa internet e não aparece nenhum botão de Drive. Tudo funciona como sempre: você baixa como quiser e escolhe a pasta.")));
+      return;
+    }
+    const okLine = (ok, text) => h("div", { class: "ok-line ind", style: ok ? null : { color: "var(--warn)" } }, ok ? icon("check") : icon("alert"), text);
+    const frow = (label, ...ctl) => h("div", { class: "cfg-frow" }, h("span", { class: "k", text: label }), ...ctl);
+    // 1 · conexão
+    const rc = h("input", { class: "input mono", value: D.rclone || "", placeholder: "Caminho do programa rclone", "aria-label": "Programa rclone" });
+    rc.addEventListener("change", async () => { if (await save({ drive_rclone: rc.value.trim() || null })) drawDrive(); });
+    const rcInfo = D.rclone ? okLine(true, { subir_no_drive: "Achado pelas configurações do “Subir no Drive”", sistema: "Achado neste computador",
+      configuracoes: "O que você escolheu" }[D.rclone_from] || "Achado")
+      : okLine(false, "O rclone não foi achado. Aponte o programa (é o mesmo que o “Subir no Drive” usa).");
+    const remote = h("input", { class: "input cfg-sel", value: D.remote, "aria-label": "Conexão do rclone" });
+    remote.addEventListener("change", () => save({ drive_remote: remote.value.trim() || "drive" }));
+    const testOut = h("div");
+    const test = h("button", { class: "btn small", type: "button", text: "Testar conexão", onclick: async () => {
+      test.disabled = true; test.textContent = "Testando…";
+      try {
+        const r = await api("drive/test", { remote: remote.value.trim(), root: root.value.trim() });
+        fill(testOut, r.ok ? okLine(true, `Conectado${r.email ? " na conta " + r.email : ""} · ${plural(r.folders, "pasta", "pastas")} em “${r.root || "raiz do Drive"}”`)
+          : okLine(false, r.error));
+      } catch (e) { fill(testOut, okLine(false, e.message)); }
+      test.disabled = false; test.textContent = "Testar conexão";
+    } });
+    const root = h("input", { class: "input mono", value: D.root || "", placeholder: "Ex.: Gravações IEC", "aria-label": "Pasta das gravações no Drive" });
+    root.addEventListener("change", () => save({ drive_root: root.value.trim() }));
+    // 2 · onde e com que nome
+    const dest = h("input", { class: "input mono", value: D.dest || "", placeholder: "Pasta deste computador", "aria-label": "Baixar para" });
+    const saveDest = async (v) => { if (await save({ drive_dest: v || null })) { dest.value = v; } };
+    dest.addEventListener("change", () => saveDest(dest.value.trim()));
+    const tpl = h("input", { class: "input mono", value: D.name, "aria-label": "Nome da pasta" });
+    const example = h("span", { class: "mono" });
+    const drawEx = () => {
+      example.textContent = tpl.value.replace(/\{data\}/g, "2026 11 10").replace(/\{professor\}/g, "Maria Clara Souza")
+        .replace(/\{codigo\}/g, "26_701").replace(/\s+/g, " ").trim() || "—";
+    };
+    tpl.addEventListener("input", drawEx);
+    tpl.addEventListener("change", async () => { if (!(await save({ drive_name: tpl.value.trim() }))) { tpl.value = D.name; drawEx(); } });
+    const tok = (t) => h("button", { class: "tok", type: "button", text: `{${t}}`, onclick: () => {
+      const a = tpl.selectionStart ?? tpl.value.length, b = tpl.selectionEnd ?? a;
+      tpl.value = tpl.value.slice(0, a) + `{${t}}` + tpl.value.slice(b);
+      drawEx(); tpl.dispatchEvent(new Event("change")); tpl.focus();
+    } });
+    drawEx();
+    const cb = (label, key) => {
+      const c = h("input", { type: "checkbox", checked: D[key === "drive_transcripts" ? "transcripts" : "open_after"] ? true : null });
+      c.addEventListener("change", () => save({ [key]: c.checked }));
+      return h("label", { class: "check" }, c, label);
+    };
+    fill(sDrive, head,
+      h("span", { class: "caps", style: { marginTop: "6px" }, text: "1 · Conexão" }),
+      frow("Programa rclone", rc, h("button", { class: "btn small", type: "button", text: "Procurar",
+        onclick: () => choose("file", "Escolha o programa rclone", "", async (p) => { rc.value = p; if (await save({ drive_rclone: p })) drawDrive(); }) })),
+      rcInfo,
+      frow("Conexão do rclone", remote, test), testOut,
+      frow("Pasta das gravações no Drive", root),
+      h("span", { class: "hint ind", text: "Onde ficam as pastas dos cursos (“26_701 Nome do professor”)." + (D.subir ? " Veio do “Subir no Drive”." : "") }),
+      h("div", { class: "cfg-sep" }),
+      h("span", { class: "caps", text: "2 · Onde e com que nome" }),
+      frow("Baixar para", dest, h("button", { class: "btn small", type: "button", text: "Alterar",
+        onclick: () => choose("folder", "Escolha a pasta onde as aulas são baixadas para revisar", dest.value || "", (p) => saveDest(p)) })),
+      frow("Nome da pasta", tpl),
+      h("div", { class: "row ind", style: { flexWrap: "wrap", gap: "8px" } }, h("span", { class: "hint", text: "Clique para inserir:" }),
+        tok("data"), tok("professor"), tok("codigo")),
+      h("div", { class: "namebox", style: { marginLeft: "212px" } }, h("span", { text: "Exemplo:" }), example),
+      h("span", { class: "hint ind", text: "{data} vem da pasta do dia (“2026 11 10”); {professor} e {codigo} vêm da pasta do curso (“26_701 Maria Clara Souza”). " +
+        "O nome sai sempre igual: a rodada seguinte cai direto na mesma revisão." }),
+      h("div", { class: "cfg-sep" }),
+      h("span", { class: "caps", text: "3 · O que baixar" }),
+      h("span", { class: "hint", text: "Só os vídeos da pasta Saída (não baixa brutos nem projeto)." }),
+      cb("Baixar as transcrições prontas junto (pasta “Transcrições” do dia)", "drive_transcripts"),
+      cb("Depois de baixar, abrir a pasta no Início", "drive_open_after"),
+      h("div", { class: "cfg-note", style: { marginTop: "6px" } }, icon("info"), h("span", {
+        text: "Só o download passa pela internet, pelo rclone que já está no computador. Vídeos, análises e comentários continuam só aqui. Desligando, o app volta a não usar internet." })));
+  }
+  drawDrive();
+
   // ---- navegação lateral
   const editorMode = st.mode === "editor";
   const secs = CFG_SECTIONS.filter(([id]) => !editorMode || CFG_SECTIONS_EDITOR.includes(id));
@@ -765,7 +864,7 @@ async function screenConfig(root, arg) {
     h("span", { class: "cfg-ver faint", text: `Revisor de Vídeos ${S && S.version ? S.version : ""}` }));
   function setActive(id) { nav.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.sec === id)); }
   const body = h("div", { class: "cfg-body" }, sModo, sCache, sPastas, sAnalise,
-    editorMode ? null : sEquipe, editorMode ? null : sCopia, sOrto);
+    editorMode ? null : sEquipe, editorMode ? null : sCopia, sOrto, editorMode ? null : sDrive);
   root.appendChild(h("div", { class: "cfg" }, nav, body));
   setActive(arg || "modo");
   if (arg && document.getElementById("cfg-" + arg)) document.getElementById("cfg-" + arg).scrollIntoView({ block: "start" });

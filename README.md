@@ -27,6 +27,9 @@ Todas as versões: [Releases](https://github.com/jprodriguesgm/revisor-de-videos
 
 - **Nada sai do computador.** O app abre um servidor local que só escuta em `127.0.0.1` (recusa
   conexões de outros endereços e pedidos de outros sites) e mostra as telas no navegador.
+- **Google Drive só se ligar (vem desligado).** Em Configurações → Google Drive dá para baixar as aulas do
+  Drive pelo **rclone** que já está no computador (o app não guarda senha nem chave; quem fala com o Google é
+  o rclone). Desligado, o app não abre nenhuma conexão para fora.
 - **Sem internet e sem IA online.** OCR (Tesseract) e transcrição de fala (whisper.cpp) rodam no
   próprio computador, com os modelos dentro do app. Nenhum vídeo, frame, áudio ou comentário é enviado
   a lugar nenhum.

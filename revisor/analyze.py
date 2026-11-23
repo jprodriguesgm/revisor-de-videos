@@ -24,7 +24,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import __version__, audio, media, nametag, ocr, report, speech, spell, transitions, video, vinheta
+from . import __version__, audio, media, nametag, ocr, report, speech, spell, transcricao, transitions, video, vinheta
 from .timecode import fmt_seconds
 
 VIDEO_EXT = {".mp4", ".mov", ".m4v"}
@@ -184,7 +184,8 @@ def analyze_video(path: str | Path, cache_root: str | Path, settings: Settings,
             elif cached.get("analysis_version") == ANALYSIS_VERSION:
                 # (o tamanho NÃO é preenchido aqui: a análise pode ser de outra versão do arquivo)
                 if cached.get("speech_version") != SPEECH_VERSION or \
-                        (settings.transcribe and (cached.get("speech") or {}).get("status") != "ok"):
+                        (settings.transcribe and (cached.get("speech") or {}).get("status") != "ok") or \
+                        newer_transcript(cached, path):
                     update_audio_speech(cached, path, out_dir, settings, progress)
                 refresh_text_checks(cached, settings)
                 refresh_speech_checks(cached, settings)
@@ -391,22 +392,43 @@ def flash_events(events: list, rate) -> list:
     return out
 
 
+def newer_transcript(analysis: dict, path: Path) -> bool:
+    """Apareceu (ou foi adicionada à mão) uma transcrição pronta depois da fala guardada no cache."""
+    sp = analysis.get("speech") or {}
+    tr = transcricao.lookup(path, analysis.get("duration"))
+    if tr["status"] != "ok":
+        return False
+    if sp.get("status") != "ok":
+        return True
+    if sp.get("source") == "pronta" and sp.get("file") == tr["file"]:
+        return tr.get("mtime", 0) > float(sp.get("at") or 0) + 1
+    done_at = float(sp.get("at") or 0) or (_analyzed_ts(analysis) or 0)
+    return tr.get("mtime", 0) > done_at + 1
+
+
 def run_speech(path: Path, analysis: dict, out_dir: Path, settings: Settings, progress=None,
                budget_s: float | None = None) -> dict:
-    if not settings.transcribe:
-        return {"status": "desligado"}
-    if not analysis.get("audio"):
-        return {"status": "sem_audio"}
-    if not speech.available():
-        return {"status": "sem_whisper"}
     fps = _rate_of(analysis)
     content = (fps.seconds_of(analysis["content"]["first_frame"]), fps.seconds_of(analysis["content"]["end_frame"]))
+    # transcrição pronta (Subir no Drive ou adicionada à mão): usa sem ouvir de novo
+    tr = transcricao.lookup(path, analysis.get("duration"))
+    if tr["status"] == "ok":
+        return transcricao.to_speech(tr, content)
+    pronta = {"pronta": tr["status"], "pronta_motivo": tr.get("motivo")} if tr["status"] != "nenhuma" else {}
+    if not settings.transcribe:
+        return {"status": "desligado", **pronta}
+    if not analysis.get("audio"):
+        return {"status": "sem_audio", **pronta}
+    if not speech.available():
+        return {"status": "sem_whisper", **pronta}
     au = analysis["audio"]
     try:
-        return speech.transcribe(str(path), content, out_dir, au.get("envelope_db"), au.get("envelope_step", 0.1),
-                                 progress=progress, budget_s=budget_s)
+        res = speech.transcribe(str(path), content, out_dir, au.get("envelope_db"), au.get("envelope_step", 0.1),
+                                progress=progress, budget_s=budget_s)
+        res["at"] = time.time()
+        return {**res, **pronta}
     except (speech.SpeechError, media.MediaError, OSError) as e:
-        return {"status": "erro", "error": str(e)[-300:]}
+        return {"status": "erro", "error": str(e)[-300:], **pronta}
 
 
 def update_audio_speech(analysis: dict, path: Path, out_dir: Path, settings: Settings, progress=None,

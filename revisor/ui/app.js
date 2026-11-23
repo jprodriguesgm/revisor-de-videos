@@ -48,6 +48,9 @@ const ICONS = {
   film: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.5v5l4-2.5z" fill="currentColor"/></svg>',
   up: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg>',
   close: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+  clip: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="4" width="10" height="4" rx="1"/><path d="M7 6H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-1"/><path d="M8 13h8M8 17h5"/></svg>',
+  text: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>',
+  down: '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 9a4 4 0 0 1 0 9"/><path d="M12 11v9M9 17l3 3 3-3"/></svg>',
   redo: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v5h-5"/></svg>',
 };
 function icon(name) {
@@ -222,11 +225,11 @@ function browse(kind, start, onPick, title) {
   const list = h("div", { class: "list" });
   const where = h("input", { class: "input mono", "aria-label": "Caminho" });
   const pickBtn = h("button", { class: "btn primary", style: { height: "44px", fontSize: "14px" },
-    text: kind === "folder" ? "Escolher esta pasta" : "Escolher este vídeo",
+    text: kind === "folder" ? "Escolher esta pasta" : kind === "transcript" ? "Escolher este arquivo" : "Escolher este vídeo",
     onclick: () => { const p = kind === "folder" ? cur : selFile; if (p) { closeModal(); onPick(p); } } });
   async function go(path) {
     try {
-      const d = await api("ls?path=" + encodeURIComponent(path || ""));
+      const d = await api("ls?path=" + encodeURIComponent(path || "") + (kind === "transcript" ? "&exts=json,srt,vtt" : ""));
       if (d.roots && !roots.childElementCount) {
         d.roots.forEach((r) => roots.appendChild(h("button", { class: "item", onclick: () => go(r.path) },
           icon("folder"), r.name)));
@@ -240,7 +243,7 @@ function browse(kind, start, onPick, title) {
       d.videos.forEach((x) => {
         const b = h("button", { class: "item", disabled: kind === "folder" ? true : null,
           onclick: () => { selFile = x.path; list.querySelectorAll(".item.sel").forEach((y) => y.classList.remove("sel")); b.classList.add("sel"); } },
-          icon("film"), x.name);
+          icon(kind === "transcript" ? "text" : "film"), x.name);
         list.appendChild(b);
       });
       if (!d.dirs.length && !d.videos.length) list.appendChild(h("div", { class: "item faint", text: "Pasta vazia" }));
@@ -249,7 +252,7 @@ function browse(kind, start, onPick, title) {
     } catch (e) { toast(e.message, true); }
   }
   where.addEventListener("keydown", (e) => { if (e.key === "Enter") go(where.value); });
-  openModal(title || (kind === "folder" ? "Escolher a pasta dos vídeos" : "Escolher o arquivo da vinheta"),
+  openModal(title || (kind === "folder" ? "Escolher a pasta dos vídeos" : kind === "transcript" ? "Escolher a transcrição" : "Escolher o arquivo da vinheta"),
     [where, h("span", { class: "faint", style: { fontSize: "12px", marginTop: "-6px" },
       text: "Dica: dá para colar o caminho aqui em cima e apertar Enter (no Windows, copie da barra de endereço do Explorador de Arquivos)." }),
      h("div", { class: "browser" }, roots, list)],
@@ -401,7 +404,187 @@ async function updateQueueChip() {
 const F = {               // o que está preenchido na tela de início (fica ao navegar)
   folder: "", info: null, professor: "", curso: "", disciplina: "", entrega: "", nome_tarja: "",
   sensitivity: null, group_gap_s: null, spell: null, transcribe: null, busy: false,
+  card: null, fromCard: [], noSimilar: "",   // cartão do Planner colado; "É outra" para esta pasta
 };
+const runningName = (inf) => (inf ? inf.project || inf.scan.name : null);
+
+// ---------------------------------------------------------------------- colar o cartão do Planner (23/11)
+// O JP cola o bloco "Preenchimento do professor"; o servidor lê (revisor/cartao.py) e a janela mostra o
+// que foi lido antes de preencher. Telefone, e-mail e matrícula não são usados nem guardados.
+function cardDialog(folder, onFill) {
+  const ta = h("textarea", { class: "paste", "aria-label": "Texto do cartão", spellcheck: "false",
+    placeholder: "> ###Preenchimento do professor\n\nData da gravação: …\n\nNome que será utilizado na aula: …" });
+  const out = h("div", { class: "read-col" });
+  const fill = h("button", { class: "btn primary", style: { height: "44px", fontSize: "14px" }, text: "Preencher a revisão", disabled: true });
+  let last = null, timer = null, seq = 0;
+  const row = (k, v, to, cls) => h("div", { class: "r " + (cls || "") },
+    h("span", { class: "k", text: k }), h("span", { class: "v", text: v }), h("span", { class: "to", text: to }));
+  function draw(r) {
+    out.replaceChildren(h("span", { class: "caps", text: "O que o app leu" }));
+    if (!r || !ta.value.trim()) {
+      out.appendChild(h("div", { class: "read" }, h("div", { class: "r skip" }, h("span", { class: "v", text: "Cole o texto do cartão ao lado." }))));
+      return;
+    }
+    const c = r.card, ck = r.check;
+    if (!c.ok) {
+      out.appendChild(h("div", { class: "notice" }, icon("alert"), h("div", { text: "Não achei os campos do cartão nesse texto. Copie o bloco “Preenchimento do professor” inteiro." })));
+      return;
+    }
+    const none = "não veio no cartão";
+    out.appendChild(h("div", { class: "read" },
+      row("Professor", c.professor || none, c.professor ? "→ Professor" : "", c.professor ? "" : "skip"),
+      row("Nome na tarja", c.nome_tarja || none, c.nome_tarja ? "→ Nome na tarja" : "", c.nome_tarja ? "" : "skip"),
+      row("Curso", c.curso || none, c.curso ? "→ Curso" : "", c.curso ? "" : "skip"),
+      row("Disciplina", c.disciplina || none, c.disciplina ? "→ Disciplina" : "", c.disciplina ? "" : "skip"),
+      row("Data da gravação", c.data_gravacao ? fmtDateBR(c.data_gravacao) + (ck.date_mismatch ? ` · a pasta diz ${fmtDateBR(ck.folder_date)}` : "")
+        : (c.data_gravacao_text || none), "só para conferir", ck.date_mismatch ? "warn" : c.data_gravacao ? "" : "skip")));
+    if (ck.date_mismatch) {
+      out.appendChild(h("div", { class: "notice" }, icon("alert"), h("div", {
+        text: `A data da gravação do cartão (${fmtDateBR(c.data_gravacao)}) é diferente da data no nome da pasta (${fmtDateBR(ck.folder_date)}). ` +
+          "Confira qual está certa e corrija o cartão no Planner, se for o caso." })));
+    }
+    out.appendChild(h("span", { class: "hint", text: "Telefone, e-mail, matrícula e os outros campos não são usados nem guardados." }));
+    if (c.professor_from === "nome_aula") {
+      out.appendChild(h("span", { class: "hint", text: "“Professor” usa o nome que vai na aula (o mesmo das pastas)." }));
+    } else if (c.professor_from === "nome_completo") {
+      out.appendChild(h("span", { class: "hint", text: "O cartão não tem o nome que vai na aula: usei o nome completo." }));
+    }
+  }
+  async function read() {
+    const my = ++seq;
+    if (!ta.value.trim()) { last = null; fill.disabled = true; draw(null); return; }
+    try {
+      const r = await api("card", { text: ta.value, folder: folder || "" });
+      if (my !== seq) return;
+      last = r; fill.disabled = !r.card.ok; draw(r);
+    } catch (e) { toast(e.message, true); }
+  }
+  ta.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(read, 200); });
+  fill.addEventListener("click", () => { if (last && last.card.ok) { closeModal(); onFill(last.card, ta.value); } });
+  openModal("Colar o cartão do Planner", [
+    h("p", { style: { margin: 0, fontSize: "13px", color: "var(--text-3)" } }, "No Planner, abra o cartão, selecione o bloco ",
+      h("b", { style: { color: "var(--text)", fontWeight: 500 }, text: "Preenchimento do professor" }), ", copie e cole aqui."),
+    h("div", { class: "card-cols" },
+      h("div", { class: "paste-col" }, h("span", { class: "caps", text: "Texto colado" }), ta), out)],
+    [h("button", { class: "btn ghost", text: "Cancelar", onclick: closeModal }), fill], true);
+  const m = $(".modal");
+  if (m) m.style.width = "1000px";
+  draw(null);
+  ta.focus();
+}
+
+// ---------------------------------------------------------------------- baixar do Drive (opcional, 23/11)
+
+/** Janela "Baixar do Drive": colar o link → conferir → baixar (com progresso). onOpen(pasta) ao terminar. */
+function driveDialog(onOpen) {
+  const link = h("input", { id: "dr-link", class: "input mono", placeholder: "https://drive.google.com/drive/folders/…", autocomplete: "off" });
+  const readBtn = h("button", { class: "btn", type: "button", text: "Ler" });
+  const area = h("div", { style: { display: "flex", flexDirection: "column", gap: "12px" } });
+  const goBtn = h("button", { class: "btn primary", style: { height: "44px", fontSize: "14px" }, text: "Baixar", disabled: true });
+  let plan = null, nameIn = null;
+  async function readLink() {
+    if (!link.value.trim()) { link.focus(); return; }
+    readBtn.disabled = true; goBtn.disabled = true;
+    fill(area, h("span", { class: "faint", text: "Lendo a pasta no Drive… (na primeira vez pode levar alguns segundos)" }));
+    try { plan = await api("drive/plan", { link: link.value.trim() }); drawPlan(); }
+    catch (e) { plan = null; fill(area, h("div", { class: "notice" }, icon("alert"), h("div", { text: e.message }))); }
+    readBtn.disabled = false;
+  }
+  function drawPlan() {
+    const L = plan.loc;
+    nameIn = h("input", { id: "dr-name", class: "input mono", value: plan.name || "", placeholder: "Nome da pasta (ex.: 2026 11 10 Professor)" });
+    let t = null;
+    nameIn.addEventListener("input", () => { clearTimeout(t); t = setTimeout(async () => {
+      try { const r = await api("drive/name", { name: nameIn.value }); plan.prev = r.prev; plan.exists = r.exists; drawInfo(); } catch (e) { /* ok */ }
+    }, 300); goBtn.disabled = !nameIn.value.trim(); });
+    const info = h("div", { style: { display: "flex", flexDirection: "column", gap: "8px" } });
+    function drawInfo() {
+      fill(info,
+        plan.prev ? h("div", { class: "notice info" }, icon("info"), h("span", {}, `Já existe uma revisão com esse nome (${plural(plan.prev.comments, "comentário", "comentários")}` +
+          (plan.prev.entrega ? `, entrega ${fmtDateBR(plan.prev.entrega)}` : "") + "). Os vídeos novos entram nela como ", h("b", { text: "rodada seguinte" }), ".")) : null,
+        plan.exists ? h("div", { class: "notice" }, icon("alert"), h("div", { text: "Essa pasta já existe no computador: os vídeos com o mesmo nome são substituídos pelos do Drive; os outros ficam." })) : null);
+    }
+    drawInfo();
+    const withTr = plan.videos.filter((v) => v.transcript).length;
+    fill(area,
+      L.found ? h("div", { class: "path" }, icon("check"), ...L.path.slice(0, -1).flatMap((p) => [h("span", { text: p }), "›"]), h("b", { text: "Saída" }))
+        : h("div", { class: "notice" }, icon("alert"), h("div", { text: "Não achei essa pasta dentro da pasta das gravações (Configurações → Google Drive). Dá para baixar mesmo assim: escreva o nome da pasta." })),
+      h("div", { class: "field" }, h("label", { for: "dr-name", text: "Nome da pasta no computador" }), nameIn,
+        h("span", { class: "hint", text: (L.found ? "Pelo modelo das Configurações. " : "") + `Vai para ${plan.dest_root}.` })),
+      info,
+      h("span", { class: "caps", text: `${plural(plan.videos.length, "vídeo", "vídeos")} · ${fmtBytes(plan.total)}` }),
+      h("div", { class: "dl-list" }, plan.videos.map((v) => h("div", { class: "dl-row" }, icon("film"),
+        h("span", { class: "nm", title: v.name, text: v.name }), h("span", { class: "sz", text: fmtBytes(v.size) }),
+        h("span", { class: "tr" }, v.transcript ? h("span", { class: "src ready" }, icon("text"), "transcrição pronta")
+          : h("span", { class: "src", text: "sem transcrição" }))))),
+      withTr < plan.videos.length ? h("span", { class: "hint", text: "Vídeo sem transcrição pronta: o Revisor ouve as falas dele sozinho, como sempre." }) : null);
+    goBtn.textContent = `Baixar ${plural(plan.videos.length, "vídeo", "vídeos")}`;
+    goBtn.disabled = !nameIn.value.trim();
+  }
+  readBtn.addEventListener("click", readLink);
+  link.addEventListener("keydown", (e) => { if (e.key === "Enter") readLink(); });
+  link.addEventListener("paste", () => setTimeout(readLink, 50));
+  goBtn.addEventListener("click", async () => {
+    if (!plan || !nameIn.value.trim()) return;
+    goBtn.disabled = true;
+    try { await api("drive/start", { name: nameIn.value.trim() }); driveProgress(onOpen); }
+    catch (e) { toast(e.message, true); goBtn.disabled = false; }
+  });
+  openModal("Baixar do Drive", [
+    h("div", { class: "field" }, h("label", { for: "dr-link", text: "Link da pasta Saída (copie do cartão ou do Drive)" }), h("div", { class: "row" }, link, readBtn)),
+    area], [h("button", { class: "btn ghost", text: "Cancelar", onclick: closeModal }), goBtn]);
+  const m = $(".modal");
+  if (m) m.style.width = "820px";
+  link.focus();
+}
+
+/** Progresso do download (a janela pode ser fechada: o download continua e o Início avisa). */
+function driveProgress(onOpen) {
+  const body = h("div", { style: { display: "flex", flexDirection: "column", gap: "12px" } });
+  const cancel = h("button", { class: "btn ghost", type: "button", text: "Cancelar download", onclick: async () => {
+    try { await api("drive/cancel", {}); } catch (e) { toast(e.message, true); } } });
+  const close = h("button", { class: "btn", type: "button", text: "Fechar", onclick: closeModal });
+  openModal("Baixando do Drive", body, [cancel, close]);
+  const m = $(".modal");
+  if (m) m.style.width = "820px";
+  let timer = null;
+  async function tick() {
+    if (!document.body.contains(body)) { clearInterval(timer); return; }
+    let r;
+    try { r = await api("drive/job"); } catch (e) { return; }
+    const j = r.job;
+    if (!j) return;
+    const pct = j.total ? Math.min(100, Math.round(100 * j.bytes / j.total)) : 0;
+    const L = j.loc || {};
+    fill(body,
+      h("div", { class: "path" }, icon("check"), L.course ? [h("span", { text: L.course }), "›", h("span", { text: L.day || "" }), "›"] : null,
+        h("b", { text: "Saída" }), h("span", { text: "→" }), h("b", { class: "mono", style: { fontSize: "12px" }, text: j.name })),
+      h("div", { class: "bignum" }, h("b", { style: { fontSize: "28px" }, text: fmtBytes(j.bytes) }),
+        h("span", { text: `de ${fmtBytes(j.total)}` + (j.state === "running" && j.eta ? ` · falta cerca de ${Math.max(1, Math.round(j.eta / 60))} min` : "") })),
+      h("div", { class: "bar big" }, h("i", { style: { width: pct + "%" } })),
+      h("div", { class: "dl-list" }, j.files.map((f) => h("div", { class: "dl-row" },
+        h("span", { class: "nm", title: f.name, text: f.name }), h("span", { class: "sz", text: fmtBytes(f.size) }),
+        h("div", { class: "pg" }, h("div", { class: "bar" }, h("i", { style: { width: f.pct + "%" } }))),
+        h("span", { class: "sz", style: { width: "90px" }, text: f.pct >= 100 ? "Pronto" : f.pct > 0 ? `${Math.round(f.pct)}%` : "Na fila" })))),
+      j.transcripts ? h("div", { class: "ok-line" }, j.transcripts_done ? icon("check") : icon("text"),
+        j.transcripts_done ? `${plural(j.transcripts_done, "transcrição baixada", "transcrições baixadas")} (pasta “Transcrições”)`
+          : `${plural(j.transcripts, "transcrição", "transcrições")} para baixar no fim`) : null,
+      j.state === "error" || j.state === "cancelled" ? h("div", { class: "notice" }, icon("alert"), h("div", { text: j.error || "Download interrompido." })) : null,
+      j.state === "done" ? h("div", { class: "notice info" }, icon("check"), h("span", { text: `Pronto: ${j.dest}` }))
+        : h("span", { class: "hint", text: "Pode fechar esta janela: o download continua e o Início avisa quando terminar." }));
+    cancel.classList.toggle("hidden", !["running", "transcricoes"].includes(j.state));
+    if (["done", "error", "cancelled"].includes(j.state)) {
+      clearInterval(timer);
+      if (j.state === "done") {
+        close.textContent = "Abrir no Início";
+        close.onclick = () => { closeModal(); api("drive/forget", {}).catch(() => {}); onOpen(j.dest); };
+        if (r.open_after) { closeModal(); api("drive/forget", {}).catch(() => {}); onOpen(j.dest); toast(`“${j.name}” baixada do Drive.`); }
+      }
+    }
+  }
+  tick();
+  timer = setInterval(tick, 1000);
+}
 
 async function screenInicio(root) {
   if (EDITOR()) return screenInicioEditor(root);
@@ -412,8 +595,9 @@ async function screenInicio(root) {
   // Voltando ao Início com uma pasta analisando (visto no Mac do JP, 21/10): o formulário ainda tinha a
   // MESMA pasta e o botão continuava "Analisar vídeos". Agora vem vazio, pronto para a próxima da fila.
   const qs0 = S.queue || {};
-  if (qs0.running && F.info && F.info.scan.ok && F.info.scan.name === qs0.running) {
-    Object.assign(F, { folder: "", info: null, professor: "", curso: "", disciplina: "", entrega: "", nome_tarja: "" });
+  if (qs0.running && F.info && F.info.scan.ok && runningName(F.info) === qs0.running) {
+    Object.assign(F, { folder: "", info: null, professor: "", curso: "", disciplina: "", entrega: "", nome_tarja: "",
+      card: null, fromCard: [] });
   }
 
   // ---- coluna 1: dados da revisão
@@ -430,9 +614,49 @@ async function screenInicio(root) {
   const tag = h("input", { id: "tarja", class: "input", value: F.nome_tarja, autocomplete: "off",
     placeholder: "Como o professor quer o nome na tarja" });
   const dl = (id, arr) => h("datalist", { id }, (arr || []).map((v) => h("option", { value: v })));
+  // "do cartão" ao lado do nome do campo preenchido pelo cartão colado (some quando o campo é mudado à mão)
+  const pill = {};
+  ["professor", "curso", "disciplina", "nome_tarja"].forEach((k) => {
+    pill[k] = h("span", { class: "from-card" + (F.fromCard.includes(k) ? "" : " hidden"), text: "do cartão" });
+  });
+  const cardBox = h("div", { class: "card-box" });
 
   [[prof, "professor"], [curso, "curso"], [disc, "disciplina"], [ent, "entrega"], [tag, "nome_tarja"]].forEach(([el, k]) =>
-    el.addEventListener("input", () => { F[k] = el.value; }));
+    el.addEventListener("input", () => {
+      F[k] = el.value;
+      if (pill[k] && F.fromCard.includes(k)) { F.fromCard = F.fromCard.filter((x) => x !== k); pill[k].classList.add("hidden"); }
+    }));
+
+  function drawCard() {
+    const c = F.card;
+    if (!c) {
+      cardBox.replaceChildren(h("div", { class: "card-strip" }, icon("clip"),
+        h("div", { class: "t" }, h("b", { text: "Tem o cartão do Planner? " }),
+          "Copie o bloco “Preenchimento do professor” e cole aqui: o app preenche professor, curso, disciplina e tarja."),
+        h("button", { class: "btn small", type: "button", text: "Colar cartão", onclick: openCard })));
+      return;
+    }
+    const fd = F.info && F.info.folder_date;
+    const mismatch = c.data_gravacao && fd && c.data_gravacao !== fd;
+    cardBox.replaceChildren(h("div", { class: "card-strip done" }, icon("check"),
+      h("div", { class: "t" }, h("b", { text: "Cartão colado. " }), "Os campos marcados vieram dele. Dá para mudar à mão."),
+      h("button", { class: "btn ghost small", type: "button", text: "Colar outro", onclick: openCard })),
+      mismatch ? h("div", { class: "notice" }, icon("alert"), h("div", {},
+        "Data da gravação diferente: o cartão diz ", h("b", { text: fmtDateBR(c.data_gravacao) }),
+        " e a pasta diz ", h("b", { text: fmtDateBR(fd) }), ". Confira o cartão no Planner.")) : null);
+  }
+  function openCard() {
+    cardDialog(F.info && F.info.scan.ok ? F.info.scan.folder : F.folder, (c) => {
+      F.card = c;
+      const set = [];
+      const put = (el, k, v) => { if (v) { el.value = v; F[k] = v; set.push(k); } };
+      put(prof, "professor", c.professor); put(curso, "curso", c.curso); put(disc, "disciplina", c.disciplina);
+      put(tag, "nome_tarja", c.nome_tarja);
+      F.fromCard = set;
+      Object.entries(pill).forEach(([k, el]) => el.classList.toggle("hidden", !set.includes(k)));
+      drawCard();
+    });
+  }
   prof.addEventListener("change", () => {
     if (!tag.value.trim() && prof.value.trim()) { tag.value = prof.value.trim(); F.nome_tarja = tag.value; }
   });
@@ -471,14 +695,47 @@ async function screenInicio(root) {
         h("div", {}, sc.warnings.length === 1 ? sc.warnings[0] :
           [h("span", { text: "Conferir no relatório de tempo:" }), h("ul", {}, sc.warnings.map((w) => h("li", { text: w })))])));
     }
-    if (inf.prev) {
+    if (inf.prev && inf.linked) {
+      prevBox.appendChild(h("div", { class: "notice info" }, icon("info"),
+        h("span", {}, `Continuando a revisão “${inf.project}”: editores, comentários e entrega ficam. ` +
+          "Os vídeos corrigidos entram como ", h("b", { text: "rodada seguinte" }),
+          " e você confere as correções com o frame de antes ao lado. Esta pasta passa a ser a dela.")));
+    } else if (inf.prev) {
       const p = inf.prev;
       prevBox.appendChild(h("div", { class: "notice info" }, icon("info"),
         h("span", { text: `Esta pasta já tem uma revisão (salva em ${fmtUpdated(p.updated)}` +
           (p.comments ? `, ${plural(p.comments, "comentário", "comentários")}` : "") +
           "). Analisar continua a mesma revisão: editores e comentários ficam." })));
+    } else if (inf.similar && inf.similar.length && F.noSimilar !== sc.folder) {
+      prevBox.appendChild(similarBox(inf));
     }
     drawEntrega();
+  }
+  // pasta com outro nome e os mesmos vídeos de uma revisão salva (23/11): continuar nela ou começar nova
+  function similarBox(inf) {
+    const m = inf.similar[0];
+    const info = [m.professor, m.entrega ? `entrega ${fmtDateBR(m.entrega)}` : null,
+      m.comments ? plural(m.comments, "comentário", "comentários") : "sem comentários",
+      m.updated ? `salva em ${fmtUpdated(m.updated)}` : null].filter(Boolean).join(" · ");
+    const others = inf.similar.slice(1).map((x) => x.project);
+    const go = h("button", { class: "btn blue small", type: "button", text: "Continuar nessa revisão (rodada seguinte)",
+      onclick: async () => {
+        go.disabled = true;
+        try {
+          await api("review/link", { project: m.project, folder: inf.scan.folder });
+          await loadFolder(inf.scan.folder, true);
+        } catch (e) { toast(e.message, true); go.disabled = false; }
+      } });
+    return h("div", { class: "match" },
+      h("div", { class: "hd" }, icon("info"), h("div", {}, "Esses vídeos parecem ser da revisão ",
+        h("b", { text: `“${m.project}”` }), h("br"), h("span", { class: "sub", text: info }))),
+      h("div", { class: "vids" }, h("span", { text: `${m.match_n} de ${m.total} vídeos com o mesmo nome:` }),
+        m.matches.slice(0, 6).map((f) => h("span", { text: "✓ " + f })),
+        m.matches.length > 6 ? h("span", { text: `… e mais ${m.matches.length - 6}` }) : null),
+      others.length ? h("div", { class: "vids" }, h("span", { class: "x", text: `Também parecida: ${others.join(", ")}` })) : null,
+      h("div", { class: "acts" }, go,
+        h("button", { class: "btn ghost small", type: "button", text: "É outra, começar nova",
+          onclick: () => { F.noSimilar = inf.scan.folder; drawChecks(); } })));
   }
   function drawEntrega() {
     const inf = F.info;
@@ -503,10 +760,19 @@ async function screenInicio(root) {
         F.entrega = fmtDateBR(sg.entrega); F.nome_tarja = sg.nome_tarja || sg.professor || "";
         if (inf.prev && inf.prev.sensitivity != null) F.sensitivity = inf.prev.sensitivity;
         if (inf.prev && inf.prev.group_gap_s != null) F.group_gap_s = inf.prev.group_gap_s;
+        // cartão colado antes de escolher a pasta: os campos dele continuam valendo
+        const c = F.card;
+        if (c && !(inf.prev && inf.linked)) {
+          if (c.professor) F.professor = c.professor;
+          if (c.curso) F.curso = c.curso;
+          if (c.disciplina) F.disciplina = c.disciplina;
+          if (c.nome_tarja) F.nome_tarja = c.nome_tarja;
+        } else if (c) { F.card = null; F.fromCard = []; Object.values(pill).forEach((el) => el.classList.add("hidden")); }
         prof.value = F.professor; curso.value = F.curso; disc.value = F.disciplina; ent.value = F.entrega;
         tag.value = F.nome_tarja; sens.value = F.sensitivity; grp.value = String(F.group_gap_s);
       }
       drawChecks();
+      drawCard();
       drawGo();
     } catch (e) {
       F.info = null;
@@ -525,17 +791,18 @@ async function screenInicio(root) {
           onclick: () => choose("folder", "Escolha a pasta com os vídeos editados", F.folder || st.last_folder,
             (p) => loadFolder(p, true)) })),
       checks),
+    cardBox,
     prevBox,
     h("div", { class: "row", style: { gap: "14px", alignItems: "flex-start" } },
-      h("div", { class: "field", style: { flex: "0.8" } }, h("label", { for: "prof", text: "Professor" }), prof),
+      h("div", { class: "field", style: { flex: "0.8" } }, h("label", { for: "prof" }, "Professor", pill.professor), prof),
       h("div", { class: "field", style: { flex: "1.2" } },
-        h("label", { for: "curso" }, "Curso ", h("span", { class: "opt", text: "(opcional)" })), curso)),
+        h("label", { for: "curso" }, "Curso ", h("span", { class: "opt", text: "(opcional)" }), pill.curso), curso)),
     h("div", { class: "field" },
-      h("label", { for: "disc" }, "Disciplina ", h("span", { class: "opt", text: "(opcional)" })), disc,
+      h("label", { for: "disc" }, "Disciplina ", h("span", { class: "opt", text: "(opcional)" }), pill.disciplina), disc,
       h("span", { class: "hint", text: "Professor, curso e disciplina sugerem valores já usados em revisões anteriores." })),
     h("div", { class: "field" }, h("label", { for: "entrega", text: "Entrega da edição" }),
       h("div", { class: "row", style: { gap: "12px" } }, ent, entNote)),
-    h("div", { class: "field" }, h("label", { for: "tarja", text: "Nome na tarja" }), tag,
+    h("div", { class: "field" }, h("label", { for: "tarja" }, "Nome na tarja", pill.nome_tarja), tag,
       h("span", { class: "hint", text: "A tarja de cada vídeo é comparada com este nome. Fica lembrado para o próximo vídeo deste professor." })),
     dl("dl-prof", st.history.professores), dl("dl-curso", st.history.cursos), dl("dl-disc", st.history.disciplinas));
 
@@ -556,7 +823,7 @@ async function screenInicio(root) {
 
   // com outra pasta analisando, "Analisar" vira "Adicionar à fila" (a revisão aberta não muda)
   const qs = S.queue || {};
-  const sameRunning = () => !!(qs.running && F.info && F.info.scan.ok && F.info.scan.name === qs.running);
+  const sameRunning = () => !!(qs.running && F.info && F.info.scan.ok && runningName(F.info) === qs.running);
   const busyOther = () => !!qs.running && !sameRunning();
   const goLabel = () => (sameRunning() ? "Ver a análise" : busyOther() ? "Adicionar à fila" : "Analisar vídeos");
   const go = h("button", { class: "btn primary", text: goLabel(), onclick: start });
@@ -588,8 +855,9 @@ async function screenInicio(root) {
       const r = await api("start", {
         folder: F.info.scan.folder, professor: prof.value, curso: curso.value, disciplina: disc.value,
         entrega: ent.value, nome_tarja: tag.value, sensitivity: F.sensitivity, group_gap_s: F.group_gap_s,
-        spell: F.spell, transcribe: F.transcribe,
+        spell: F.spell, transcribe: F.transcribe, data_gravacao: (F.card && F.card.data_gravacao) || "",
       });
+      F.card = null; F.fromCard = [];
       if (r.queued) {
         toast(`“${r.project}” entrou na fila (${r.position === 1 ? "é a próxima" : r.position + "ª"}). Pode escolher outra pasta.`);
         Object.assign(F, { folder: "", info: null, professor: "", curso: "", disciplina: "", entrega: "", nome_tarja: "" });
@@ -624,6 +892,31 @@ async function screenInicio(root) {
 
   const openSaved = h("button", { class: "btn ghost", style: { fontSize: "14px" }, onclick: savedDialog },
     icon("folder"), "Abrir revisão salva");
+  const openDownloaded = (dest) => { F.noSimilar = ""; F.folder = dest; if (location.hash.startsWith("#/inicio") || !location.hash) loadFolder(dest, true); else location.hash = "#/inicio"; };
+  const driveOn = !!(st.drive_on);
+  const driveBtn = driveOn ? h("button", { class: "btn", style: { fontSize: "14px" }, type: "button",
+    onclick: () => driveDialog(openDownloaded) }, icon("down"), "Baixar do Drive") : null;
+  // download do Drive em andamento ou terminado com a janela fechada
+  const driveBox = h("div");
+  async function drawDriveBox() {
+    if (!driveOn) return;
+    let r;
+    try { r = await api("drive/job"); } catch (e) { return; }
+    const j = r.job;
+    if (!j || document.querySelector(".modal")) { driveBox.replaceChildren(); return; }
+    const pct = j.total ? Math.min(100, Math.round(100 * j.bytes / j.total)) : 0;
+    if (["running", "transcricoes"].includes(j.state)) {
+      driveBox.replaceChildren(h("div", { class: "notice info" }, icon("down"), h("span", { style: { flex: 1 }, text: `Baixando “${j.name}” do Drive · ${pct}%` }),
+        h("button", { class: "btn small", type: "button", text: "Ver", onclick: () => driveProgress(openDownloaded) })));
+      setTimeout(() => { if (document.body.contains(driveBox)) drawDriveBox(); }, 1500);
+    } else if (j.state === "done") {
+      driveBox.replaceChildren(h("div", { class: "notice info" }, icon("check"), h("span", { style: { flex: 1 }, text: `“${j.name}” baixada do Drive.` }),
+        h("button", { class: "btn small", type: "button", text: "Abrir", onclick: () => { api("drive/forget", {}).catch(() => {}); driveBox.replaceChildren(); openDownloaded(j.dest); } })));
+    } else {
+      driveBox.replaceChildren(h("div", { class: "notice" }, icon("alert"), h("span", { style: { flex: 1 }, text: `Download de “${j.name}”: ${j.error || "interrompido"}` }),
+        h("button", { class: "btn small", type: "button", text: "Ok", onclick: () => { api("drive/forget", {}).catch(() => {}); driveBox.replaceChildren(); } })));
+    }
+  }
 
   // fila (quando há mais de uma pasta) embaixo do formulário; fila antiga em cima
   const qBox = h("div", { class: "start-q" });
@@ -641,19 +934,21 @@ async function screenInicio(root) {
     h("button", { class: "btn small", type: "button", text: "Importar equipe",
       title: "Usar o arquivo da equipe que alguém exportou em outro computador",
       onclick: () => importTeamDialog(() => render()) })) : null;
-  root.appendChild(h("div", { class: "screen-center" }, h("div", { class: "start-wrap" }, firstTime,
+  root.appendChild(h("div", { class: "screen-center" }, h("div", { class: "start-wrap" }, firstTime, driveBox,
     h("section", { class: "panel start" },
       h("div", { class: "start-head" },
         h("div", {}, h("h1", { text: busyOther() ? "Nova revisão · fila" : "Nova revisão" }),
           h("p", { text: busyOther() ? "Enquanto a análise roda, escolha a próxima pasta: ela entra na fila e é analisada em seguida."
             : "Escolha a pasta com os vídeos editados e confirme os dados. O resto o app lê sozinho." })),
-        openSaved),
+        h("div", { class: "row" }, driveBtn, openSaved)),
       h("div", { class: "cols" }, colA, h("div", { class: "vline" }), colB)),
     qBox)));
 
   drawGo();
   drawQueue();
   drawEntrega();
+  drawCard();
+  drawDriveBox();
   if (F.folder) loadFolder(F.folder);   // relê: a revisão pode ter sido salva desde a última vez
 }
 
@@ -667,7 +962,7 @@ async function screenInicioEditor(root) {
   const st = S.settings;
   if (FE.spell === null) { FE.spell = st.spell; FE.transcribe = st.transcribe; }
   const qs = S.queue || {};
-  if (qs.running && FE.info && FE.info.scan.ok && FE.info.scan.name === qs.running) {
+  if (qs.running && FE.info && FE.info.scan.ok && runningName(FE.info) === qs.running) {
     Object.assign(FE, { folder: "", info: null, raw: "", professor: "", nome_tarja: "" });
   }
   const folderIn = h("input", { id: "pasta", class: "input mono", value: FE.folder,
@@ -723,7 +1018,7 @@ async function screenInicioEditor(root) {
   folderIn.addEventListener("change", () => loadFolder(folderIn.value));
   folderIn.addEventListener("keydown", (e) => { if (e.key === "Enter") loadFolder(folderIn.value); });
 
-  const sameRunning = () => !!(qs.running && FE.info && FE.info.scan.ok && FE.info.scan.name === qs.running);
+  const sameRunning = () => !!(qs.running && FE.info && FE.info.scan.ok && runningName(FE.info) === qs.running);
   const busyOther = () => !!qs.running && !sameRunning();
   const go = h("button", { class: "btn primary", onclick: () => start() });
   const goHint = h("span", { class: "hint", style: { textAlign: "center" } });
@@ -948,6 +1243,38 @@ function reanalyzeDialog(vid, label, after) {
 
 // ====================================================================== 2 · Análise
 
+/** Adicionar transcrição à mão (23/11): escolher o vídeo e o arquivo; a fala daquele vídeo é refeita com ela. */
+function transcriptDialog(videos, vid, folder, after) {
+  const list = (videos || []).filter((v) => v.id && v.status !== "erro");
+  if (!list.length) { toast("Nenhum vídeo desta pasta para ligar a transcrição.", true); return; }
+  const sel = h("select", { class: "input", id: "tr-video" },
+    list.map((v) => h("option", { value: v.id, text: vlabel(v) + (v.tr && v.tr.status === "pronta" ? " (já tem transcrição)" : "") })));
+  sel.value = vid || (list.find((v) => !v.tr || v.tr.status !== "pronta") || list[0]).id;
+  const file = h("input", { class: "input mono", id: "tr-file", placeholder: "Arquivo .json, .srt ou .vtt", autocomplete: "off" });
+  const go = h("button", { class: "btn primary", style: { height: "44px", fontSize: "14px" }, text: "Adicionar" });
+  go.addEventListener("click", async () => {
+    if (!file.value.trim()) { toast("Escolha o arquivo da transcrição.", true); file.focus(); return; }
+    go.disabled = true; go.textContent = "Lendo…";
+    try {
+      const r = await api("transcript/import", { id: sel.value, path: file.value.trim() });
+      closeModal();
+      const v = list.find((x) => x.id === sel.value);
+      toast(`Transcrição adicionada ao ${v ? vlabel(v) : "vídeo"}` + (r.approx ? " (tempos por frase)" : "") +
+        ". A fala dele é refeita com ela" + (r.queued ? " depois da pasta que está analisando." : "."));
+      if (after) after();
+    } catch (e) { toast(e.message, true); go.disabled = false; go.textContent = "Adicionar"; }
+  });
+  openModal("Adicionar transcrição manualmente", [
+    h("div", { class: "field" }, h("label", { for: "tr-video", text: "Vídeo" }), sel),
+    h("div", { class: "field" }, h("label", { for: "tr-file", text: "Arquivo da transcrição" }),
+      h("div", { class: "row" }, file, h("button", { class: "btn", type: "button", text: "Escolher arquivo",
+        onclick: () => choose("transcript", "Escolha a transcrição (.json, .srt ou .vtt)", folder || "", (p) => { file.value = p; }) })),
+      h("span", { class: "hint", text: "Aceita o .json do Revisor ou do Whisper (com o tempo de cada palavra) e .srt/.vtt (do Premiere, por exemplo: " +
+        "aí o tempo é por frase e as palavras são espalhadas na frase). A transcrição precisa ser deste vídeo, na versão que está na pasta." })),
+    h("div", { class: "cfg-note" }, icon("info"), h("span", { text: "Uma cópia fica na pasta “Transcrições” ao lado dos vídeos. O resto da análise do vídeo não muda." }))],
+    [h("button", { class: "btn ghost", text: "Cancelar", onclick: closeModal }), go]);
+}
+
 async function screenAnalise(root) {
   const view = await api("review");
   if (!view.review) { location.hash = "#/inicio"; return; }
@@ -976,6 +1303,8 @@ async function screenAnalise(root) {
 
   const qBox = h("div", { class: "side-q" });
   const restoreBox = h("div");
+  const trCard = h("div", { class: "card" });
+  let lastJob = null, trSig = "";
   root.appendChild(h("div", { class: "screen-center", style: { padding: "32px 40px" } },
     h("div", { class: "wide" }, head, restoreBox,
       h("div", { class: "split" },
@@ -984,7 +1313,42 @@ async function screenAnalise(root) {
             h("span", { class: "c-dur", text: "Duração" }), h("span", { class: "c-st", text: "Situação" }),
             h("span", { class: "c-found", text: "Achados" }), h("span", { class: "c-redo" })),
           rows),
-        h("aside", { class: "side" }, prog, btnMain, btnPause, qBox, rep)))));
+        h("aside", { class: "side" }, prog, btnMain, btnPause, qBox, trCard, rep)))));
+
+  // transcrição pronta de cada vídeo (23/11): da pasta "Transcrições" ou adicionada à mão
+  const trChip = (v) => {
+    const t = v.tr;
+    if (!t || !t.status) return null;
+    if (t.status === "pronta") return h("span", { class: "src ready", title: t.file || "" }, icon("text"),
+      t.approx ? "Falas: transcrição pronta (por frase)" : "Falas: transcrição pronta");
+    if (t.status === "nao_bate") return h("span", { class: "src warn", title: t.motivo || "" }, icon("alert"),
+      v.status === "ok" ? "Transcrição não bate: não usada" : "Transcrição não bate: vai ouvir");
+    return h("span", { class: "src warn", title: t.motivo || "" }, icon("alert"), "Transcrição não pôde ser lida");
+  };
+  const trAdd = (v) => (v.tr && ["nao_bate", "invalida"].includes(v.tr.status) && v.status !== "run")
+    ? h("button", { class: "btn ghost small", type: "button", text: "Adicionar transcrição",
+        onclick: () => transcriptDialog(lastJob ? lastJob.videos : [], v.id, rv.folder, () => { tick(); if (!poll) poll = setInterval(tick, 800); }) })
+    : null;
+  function drawTrCard(j) {
+    const vids = j.videos.filter((v) => v.status !== "erro");
+    const ready = vids.filter((v) => v.tr && v.tr.status === "pronta");
+    const bad = vids.filter((v) => v.tr && v.tr.status !== "pronta");
+    const sig = JSON.stringify([ready.map((v) => v.id), bad.map((v) => [v.id, v.tr.status]), vids.length]);
+    if (sig === trSig) return;
+    trSig = sig;
+    trCard.replaceChildren(h("span", { class: "caps", text: "Transcrições prontas" }),
+      ready.length ? h("div", { class: "ok-line" }, icon("check"),
+        `${ready.length} de ${plural(vids.length, "vídeo usa", "vídeos usam")} a transcrição pronta`)
+        : h("span", { class: "muted", style: { fontSize: "13px" }, text: "Nenhuma nesta pasta: o app ouve as falas sozinho." }),
+      ready.length ? h("span", { class: "hint", text: "Achadas na pasta “Transcrições”. Esses vídeos não precisam ser ouvidos de novo." }) : null,
+      ...bad.map((v) => h("div", { class: "notice", style: { marginTop: "4px" } }, icon("alert"),
+        h("div", { text: `${vlabel(v)}: ${v.tr.status === "nao_bate" ? "a transcrição é de outra versão do vídeo (duração diferente)"
+          : "a transcrição não pôde ser lida"}. O app ouve esse vídeo sozinho, como hoje.` }))),
+      h("button", { class: "btn small", type: "button", style: { marginTop: "4px" },
+        onclick: () => transcriptDialog(lastJob ? lastJob.videos : [], null, rv.folder, () => { tick(); if (!poll) poll = setInterval(tick, 800); }) },
+        icon("text"), "Adicionar transcrição manualmente"),
+      h("span", { class: "hint", text: "Para uma transcrição feita de outro jeito ou salva em outro lugar: escolha o vídeo e o arquivo (.json do Revisor ou do Whisper, .srt ou .vtt). Só a fala daquele vídeo é refeita." }));
+  }
 
   // botão por vídeo: analisar de novo (vídeo pronto ou com análise anterior)
   const redoBtn = (v, show) => h("span", { class: "c-redo" }, show ? h("button", { class: "icon-btn small",
@@ -1020,8 +1384,9 @@ async function screenAnalise(root) {
         h("span", { class: "c-name", title: v.file, style: { color: v.cached ? null : "var(--faint)" }, text: vlabel(v) }),
         h("span", { class: "c-dur", text: fmtClock(v.duration) }),
         h("div", { class: "c-st" }, h("span", { class: "s", style: { color: v.cached ? "var(--accent-text)" : "var(--faint)" },
-          text: v.status === "erro" ? "Erro" : v.cached ? "Análise anterior" : "Na fila" })),
-        h("span", { class: "c-found", text: v.cached ? "abre normalmente" : "—" }), redoBtn(v, v.cached))));
+          text: v.status === "erro" ? "Erro" : v.cached ? "Análise anterior" : "Na fila" }), trChip(v)),
+        h("span", { class: "c-found" }, trAdd(v) || (v.cached ? "abre normalmente" : "—")), redoBtn(v, v.cached))));
+      lastJob = j; drawTrCard(j);
       prog.replaceChildren(h("span", { class: "caps", text: "Esperando a vez" }),
         h("span", { style: { fontSize: "14px" }, text: q && q.running ? `Esta pasta começa quando “${q.running}” terminar` +
           (me && me.position > 1 ? ` (é a ${me.position}ª da fila).` : ".") : "Esta pasta começa em seguida." }),
@@ -1058,11 +1423,13 @@ async function screenAnalise(root) {
         h("span", { class: "c-name", title: v.file, style: { color: v.status === "wait" ? "var(--faint)" : null }, text: vlabel(v) }),
         h("span", { class: "c-dur", text: fmtClock(v.duration) }),
         h("div", { class: "c-st" }, h("span", { class: "s", style: { color }, text: st }),
-          v.status === "run" ? h("div", { class: "bar" }, h("i", { style: { width: `${Math.round(v.pct * 100)}%` } })) : null),
+          v.status === "run" ? h("div", { class: "bar" }, h("i", { style: { width: `${Math.round(v.pct * 100)}%` } })) : null,
+          trChip(v)),
         h("span", { class: "c-found", title: v.status === "erro" ? (v.detail || v.error || "") : null,
-          style: v.status === "erro" ? { color: "var(--bad)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } : null,
-          text: found }), redoBtn(v, v.status === "ok"));
+          style: v.status === "erro" ? { color: "var(--bad)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } : null },
+          (v.status !== "ok" && trAdd(v)) || found), redoBtn(v, v.status === "ok"));
     }));
+    lastJob = j; drawTrCard(j);
     const finished = ["done", "cancelled", "error"].includes(j.state);
     let eta = "";
     if (j.state === "paused") eta = "Análise pausada";

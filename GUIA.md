@@ -4,7 +4,18 @@ O Revisor de Vídeos confere as videoaulas editadas antes da entrega: áudio, co
 ortografia, tarja com o nome do professor, transições de slide, vinhetas e falas como "errei" ou
 "retomando". Ele marca o que precisa de atenção, você olha, comenta e manda as correções para o editor.
 
-Tudo roda no seu computador: **nenhum vídeo, frame ou comentário sai dele**.
+Tudo roda no seu computador: **nenhum vídeo, frame ou comentário sai dele**. A única exceção é opcional e
+vem desligada: baixar as aulas do Google Drive pelo próprio app ([seção 11](#google-drive-opcional)).
+
+**Novidades (novembro/2026)**
+- **Colar o cartão do Planner:** professor, curso, disciplina e tarja preenchidos de uma vez, e aviso quando a
+  data da gravação do cartão não bate com a da pasta ([passo 1](#colar-o-cartão-do-planner)).
+- **Pasta baixada de novo com outro nome:** o app reconhece a revisão pelos vídeos e continua nela como rodada
+  seguinte ([seção 6](#pasta-baixada-de-novo-com-outro-nome)).
+- **Transcrição pronta:** vídeo que chega com a transcrição não precisa ser ouvido de novo; dá para
+  **adicionar uma transcrição manualmente** (.json, .srt ou .vtt) ([passo 2](#transcrição-pronta)).
+- **Baixar do Drive (opcional):** cola o link da pasta Saída e o app baixa com o nome no padrão e as
+  transcrições ([seção 11](#google-drive-opcional)).
 
 **Novidades da versão 1.1.1**
 - **Exportar e importar a equipe:** uma pessoa cadastra e as outras importam o arquivo
@@ -173,6 +184,25 @@ se estão inteiras, cortadas ou faltando.
 
 ![Início preenchido](docs/guia/03-inicio-preenchido.png)
 
+#### Colar o cartão do Planner
+
+No Planner, abra o cartão, selecione o bloco **Preenchimento do professor**, copie e clique em **Colar cartão**
+no Início. A janela mostra o texto colado e, ao lado, o que o app leu:
+
+![Colar o cartão](docs/guia/32-colar-cartao.png)
+
+- **Professor** e **Nome na tarja** vêm do "Nome que será utilizado na aula" (o mesmo nome das pastas). Se o
+  cartão não tiver esse campo, o app usa o nome completo.
+- **Curso** e **Disciplina** vêm dos campos com o mesmo nome.
+- **Data da gravação** serve só para conferir: se ela for diferente da data no começo do nome da pasta
+  ("2026 11 10 Professor"), o app avisa para você corrigir o cartão no Planner.
+- Telefone, e-mail, matrícula e os outros campos **não são usados nem guardados**.
+
+Clique em **Preencher a revisão**. Os campos que vieram do cartão ficam marcados **do cartão** (dá para mudar
+à mão; a marca some no campo mudado):
+
+![Início preenchido pelo cartão](docs/guia/33-inicio-com-cartao.png)
+
 > A **entrega da edição** é a data que conta no relatório do mês. Depois de salva, ela trava.
 
 **Relatório de tempo pelo app.** Faz o mesmo txt do "Calculo de tempo" (o `.command`), com as mesmas
@@ -204,6 +234,32 @@ primeiro vídeo fica pronto, clique em **Revisar o vídeo 01 enquanto analisa**.
   mudam — o vídeo continua contando uma vez só. Útil quando um vídeo volta para a segunda revisão e
   aparece como "Análise anterior". Se o arquivo foi trocado por outro com o mesmo nome e a mesma
   duração, o app já percebe sozinho e analisa de novo.
+
+#### Transcrição pronta
+
+Se a pasta tiver uma pasta **Transcrições** com a transcrição de um vídeo (feita antes, por exemplo pelo
+"Subir no Drive", com o mesmo motor do Revisor), o app usa essa transcrição e **não ouve o vídeo de novo**.
+Na tela de Análise cada vídeo mostra **Falas: transcrição pronta**.
+
+![Transcrição pronta na análise](docs/guia/35-transcricao-pronta.png)
+
+- O app procura a pasta **Transcrições** dentro da pasta dos vídeos e ao lado dela (na pasta do dia, como no
+  Drive). O arquivo tem o nome do vídeo terminado em `.transcricao.json`.
+- A transcrição só vale se for **desta versão do vídeo** (mesma duração). Se o vídeo foi corrigido depois,
+  aparece **Transcrição não bate** e o app ouve o vídeo sozinho, como sempre.
+- Vale mesmo com **Ouvir as falas** desligado (não custa nada).
+
+**Adicionar transcrição manualmente** (no cartão "Transcrições prontas", à direita): para uma transcrição
+feita de outro jeito ou salva em outro lugar. Escolha o vídeo e o arquivo:
+
+![Adicionar transcrição](docs/guia/36-adicionar-transcricao.png)
+
+- aceita o `.json` do Revisor ou do Whisper (com o tempo de cada palavra) e `.srt`/`.vtt` (do Premiere, por
+  exemplo). No SRT/VTT o tempo é por frase: as palavras são espalhadas dentro da frase e o vídeo aparece com
+  **transcrição pronta (por frase)**;
+- uma cópia fica na pasta **Transcrições** ao lado dos vídeos; só a fala daquele vídeo é refeita, o resto da
+  análise não muda;
+- o app recusa transcrição mais longa que o vídeo (é de outro vídeo ou de outra versão).
 
 ### Passo 3 — Resumo geral
 
@@ -344,6 +400,21 @@ rodada anterior"**. Clique em **Conferir correções**:
 
 A imagem de "como estava" é guardada quando você comenta (a partir desta versão). Comentários
 antigos aparecem sem ela.
+
+### Pasta baixada de novo com outro nome
+
+O app reconhece a revisão pelo **nome da pasta**. Se você baixa a versão corrigida e dá outro nome à pasta
+(ex.: "2026 11 10 Maria Clara" em vez de "2026 11 10 Maria Clara Souza"), ele percebe que os **vídeos** são os
+mesmos de uma revisão salva e pergunta:
+
+![Revisão reconhecida pelos vídeos](docs/guia/34-revisao-reconhecida.png)
+
+- **Continuar nessa revisão:** a pasta nova passa a ser a dela. Editores, comentários, entrega e horas ficam;
+  os vídeos corrigidos entram como **rodada seguinte** e você confere as correções (acima).
+- **É outra, começar nova:** segue como uma revisão nova.
+
+O app pergunta quando pelo menos metade dos vídeos da pasta tem o mesmo nome dos vídeos da revisão salva.
+Com o **Baixar do Drive** o nome da pasta sai sempre igual, e isso nem chega a acontecer.
 
 ---
 
@@ -545,7 +616,34 @@ Google Drive) e indique essa pasta em **Configurações → Pastas**.
   bloco do SRT, o texto do começo ("CORRIGIR:") e onde salvar os SRT.
 - **Ortografia e dicionário:** inglês e latim liga/desliga, e a sua lista de palavras e expressões
   aceitas.
+- **Google Drive (opcional):** veja abaixo.
 - No fim do menu da esquerda aparece a **versão** do app instalado.
+
+### Google Drive (opcional)
+
+Vem **desligado**: desligado, o app não usa internet e não aparece nenhum botão de Drive. Ligado, aparece
+**Baixar do Drive** no Início: você cola o link da pasta **Saída** e o app baixa os vídeos para a pasta de
+revisão, **já com o nome no padrão** e com as **transcrições prontas**.
+
+![Configurações do Google Drive](docs/guia/37-config-drive.png)
+
+1. **Conexão:** o app usa o **rclone** que já está no computador (o mesmo do "Subir no Drive", com a conta da
+   instituição). No Mac com o "Subir no Drive" instalado, ele acha o rclone, a conexão e a pasta das gravações
+   sozinho. Clique em **Testar conexão**.
+2. **Onde e com que nome:** a pasta onde baixar (ex.: "Vídeos para conferir") e o **modelo do nome**:
+   `{data}` vem da pasta do dia ("2026 11 10"); `{professor}` e `{codigo}` vêm da pasta do curso
+   ("26_701 Maria Clara Souza"). O padrão é `{data} {professor}`.
+3. **O que baixar:** só os vídeos da pasta Saída; as transcrições prontas (pasta **Transcrições** do dia) se
+   quiser; e abrir a pasta no Início ao terminar.
+
+**Baixar do Drive** (Início): cole o link (da pasta Saída ou da pasta do dia), confira e clique em **Baixar**.
+
+![Baixar do Drive](docs/guia/38-baixar-do-drive.png)
+
+- Se já existe uma revisão com esse nome, a janela avisa: os vídeos novos entram nela como rodada seguinte.
+- Pode fechar a janela: o download continua e o Início avisa quando terminar.
+- Link de uma pasta fora da pasta das gravações: dá para baixar, escrevendo o nome da pasta à mão.
+- Só o download passa pela internet, pelo rclone. Vídeos, análises e comentários continuam só no computador.
 
 ---
 

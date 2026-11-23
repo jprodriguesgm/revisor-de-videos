@@ -53,6 +53,16 @@ DEFAULTS = {
     "my_name": "",                   # modo editor: nome de quem usa este computador (vira o editor dos vídeos)
     "tag_names": {},                 # professor → nome usado na tarja
     "history": {"professores": [], "cursos": [], "disciplinas": []},
+    # Google Drive opcional (23/11/2026): desligado = o app não usa internet
+    "drive_on": False,
+    "drive_rclone": None,            # programa rclone (None = achar sozinho: Subir no Drive, PATH)
+    "drive_config": None,            # RCLONE_CONFIG (None = o do Subir no Drive ou o padrão do rclone)
+    "drive_remote": "drive",         # conexão do rclone (conta da instituição)
+    "drive_root": None,              # pasta das gravações no Drive (None = a pasta inicial do Subir no Drive)
+    "drive_dest": None,              # pasta do computador onde as aulas são baixadas para revisar
+    "drive_name": "{data} {professor}",
+    "drive_transcripts": True,       # baixar as transcrições prontas junto
+    "drive_open_after": True,        # depois de baixar, abrir a pasta no Início
     "error_phrases": list(speech.ERROR_PHRASES_DEFAULT),
     "generic_names": list(nametag.GENERIC_DEFAULT),
 }
