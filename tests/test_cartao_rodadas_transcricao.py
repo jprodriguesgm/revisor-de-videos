@@ -211,3 +211,9 @@ def test_cartao_rota(srv):  # noqa: F811
     port, tmp, server = srv
     st, r = _req(port, "POST", "/api/card", {"text": CARD, "folder": str(tmp / "2026 11 10 Maria Clara Souza")})
     assert st == 200 and r["card"]["professor"] == "Maria Clara Souza" and r["check"]["date_mismatch"]
+
+
+def test_cartao_txt_exportado_com_tab_ou_igual():
+    txt = "Nome que será utilizado na aula\tAna Lima\nCurso = MBA em Gestão\nDisciplina: Finanças\nData da gravação: 05/11/2026\n"
+    c = cartao.parse(txt)
+    assert (c["professor"], c["curso"], c["disciplina"], c["data_gravacao"]) == ("Ana Lima", "MBA em Gestão", "Finanças", "2026-11-05")

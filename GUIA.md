@@ -7,8 +7,8 @@ ortografia, tarja com o nome do professor, transições de slide, vinhetas e fal
 Tudo roda no seu computador: **nenhum vídeo, frame ou comentário sai dele**. A única exceção é opcional e
 vem desligada: baixar as aulas do Google Drive pelo próprio app ([seção 11](#google-drive-opcional)).
 
-**Novidades (novembro/2026)**
-- **Colar o cartão do Planner:** professor, curso, disciplina e tarja preenchidos de uma vez, e aviso quando a
+**Novidades da versão 1.2.0**
+- **Colar o cartão do Planner** (ou abrir o .txt exportado): professor, curso, disciplina e tarja preenchidos de uma vez, e aviso quando a
   data da gravação do cartão não bate com a da pasta ([passo 1](#colar-o-cartão-do-planner)).
 - **Pasta baixada de novo com outro nome:** o app reconhece a revisão pelos vídeos e continua nela como rodada
   seguinte ([seção 6](#pasta-baixada-de-novo-com-outro-nome)).
@@ -187,7 +187,9 @@ se estão inteiras, cortadas ou faltando.
 #### Colar o cartão do Planner
 
 No Planner, abra o cartão, selecione o bloco **Preenchimento do professor**, copie e clique em **Colar cartão**
-no Início. A janela mostra o texto colado e, ao lado, o que o app leu:
+no Início. Se você tiver o **arquivo .txt** exportado com essas informações, clique em **Abrir .txt** (ou, na
+janela, em **Abrir arquivo .txt**, ou arraste o arquivo para a caixa do texto). A janela mostra o texto e, ao lado,
+o que o app leu:
 
 ![Colar o cartão](docs/guia/32-colar-cartao.png)
 

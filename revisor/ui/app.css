@@ -766,3 +766,4 @@ body.rv-on #screen{flex:1;min-height:0;display:flex;flex-direction:column}
 .path b{color:var(--text);font-weight:500}
 .cfg-sec .ind{padding-left:212px}
 @media (max-width:900px){.cfg-sec .ind{padding-left:0}.cfg-sec .namebox{margin-left:0!important}}
+.paste.drop{border-color:#5b8de8;background:#181c24}

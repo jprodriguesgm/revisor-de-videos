@@ -411,7 +411,14 @@ const runningName = (inf) => (inf ? inf.project || inf.scan.name : null);
 // ---------------------------------------------------------------------- colar o cartão do Planner (23/11)
 // O JP cola o bloco "Preenchimento do professor"; o servidor lê (revisor/cartao.py) e a janela mostra o
 // que foi lido antes de preencher. Telefone, e-mail e matrícula não são usados nem guardados.
-function cardDialog(folder, onFill) {
+/** Texto de um .txt escolhido (UTF-8; se não for, Windows-1252, comum em arquivo exportado no Windows). */
+async function readTextFile(file) {
+  const buf = await file.arrayBuffer();
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(buf).replace(/^\ufeff/, ""); }
+  catch (e) { return new TextDecoder("windows-1252").decode(buf); }
+}
+
+function cardDialog(folder, onFill, pickFile) {
   const ta = h("textarea", { class: "paste", "aria-label": "Texto do cartão", spellcheck: "false",
     placeholder: "> ###Preenchimento do professor\n\nData da gravação: …\n\nNome que será utilizado na aula: …" });
   const out = h("div", { class: "read-col" });
@@ -460,10 +467,25 @@ function cardDialog(folder, onFill) {
     } catch (e) { toast(e.message, true); }
   }
   ta.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(read, 200); });
+  // .txt com os campos do cartão (exportado do Planner): escolher o arquivo ou arrastar para a caixa
+  const fileIn = h("input", { type: "file", accept: ".txt,text/plain", class: "hidden" });
+  async function loadFile(f) {
+    if (!f) return;
+    if (f.size > 200000) { toast("Arquivo grande demais para um cartão.", true); return; }
+    try { ta.value = await readTextFile(f); read(); } catch (e) { toast("Não deu para ler o arquivo.", true); }
+  }
+  fileIn.addEventListener("change", () => { loadFile(fileIn.files[0]); fileIn.value = ""; });
+  ta.addEventListener("dragover", (e) => { e.preventDefault(); ta.classList.add("drop"); });
+  ta.addEventListener("dragleave", () => ta.classList.remove("drop"));
+  ta.addEventListener("drop", (e) => { e.preventDefault(); ta.classList.remove("drop"); loadFile(e.dataTransfer.files[0]); });
+  const fileBtn = h("button", { class: "btn small", type: "button", onclick: () => fileIn.click() }, icon("text"), "Abrir arquivo .txt");
   fill.addEventListener("click", () => { if (last && last.card.ok) { closeModal(); onFill(last.card, ta.value); } });
   openModal("Colar o cartão do Planner", [
-    h("p", { style: { margin: 0, fontSize: "13px", color: "var(--text-3)" } }, "No Planner, abra o cartão, selecione o bloco ",
-      h("b", { style: { color: "var(--text)", fontWeight: 500 }, text: "Preenchimento do professor" }), ", copie e cole aqui."),
+    h("div", { class: "row", style: { justifyContent: "space-between", gap: "16px" } },
+      h("p", { style: { margin: 0, fontSize: "13px", color: "var(--text-3)" } }, "No Planner, abra o cartão, selecione o bloco ",
+        h("b", { style: { color: "var(--text)", fontWeight: 500 }, text: "Preenchimento do professor" }),
+        ", copie e cole aqui. Ou abra (ou arraste para a caixa) o arquivo .txt exportado com essas informações."),
+      fileBtn, fileIn),
     h("div", { class: "card-cols" },
       h("div", { class: "paste-col" }, h("span", { class: "caps", text: "Texto colado" }), ta), out)],
     [h("button", { class: "btn ghost", text: "Cancelar", onclick: closeModal }), fill], true);
@@ -471,6 +493,7 @@ function cardDialog(folder, onFill) {
   if (m) m.style.width = "1000px";
   draw(null);
   ta.focus();
+  if (pickFile) fileIn.click();
 }
 
 // ---------------------------------------------------------------------- baixar do Drive (opcional, 23/11)
@@ -632,20 +655,22 @@ async function screenInicio(root) {
     if (!c) {
       cardBox.replaceChildren(h("div", { class: "card-strip" }, icon("clip"),
         h("div", { class: "t" }, h("b", { text: "Tem o cartão do Planner? " }),
-          "Copie o bloco “Preenchimento do professor” e cole aqui: o app preenche professor, curso, disciplina e tarja."),
-        h("button", { class: "btn small", type: "button", text: "Colar cartão", onclick: openCard })));
+          "Cole o bloco “Preenchimento do professor” ou abra o .txt exportado: o app preenche professor, curso, disciplina e tarja."),
+        h("div", { class: "row", style: { gap: "8px" } },
+          h("button", { class: "btn ghost small", type: "button", text: "Abrir .txt", onclick: () => openCard(true) }),
+          h("button", { class: "btn small", type: "button", text: "Colar cartão", onclick: () => openCard() }))));
       return;
     }
     const fd = F.info && F.info.folder_date;
     const mismatch = c.data_gravacao && fd && c.data_gravacao !== fd;
     cardBox.replaceChildren(h("div", { class: "card-strip done" }, icon("check"),
       h("div", { class: "t" }, h("b", { text: "Cartão colado. " }), "Os campos marcados vieram dele. Dá para mudar à mão."),
-      h("button", { class: "btn ghost small", type: "button", text: "Colar outro", onclick: openCard })),
+      h("button", { class: "btn ghost small", type: "button", text: "Colar outro", onclick: () => openCard() })),
       mismatch ? h("div", { class: "notice" }, icon("alert"), h("div", {},
         "Data da gravação diferente: o cartão diz ", h("b", { text: fmtDateBR(c.data_gravacao) }),
         " e a pasta diz ", h("b", { text: fmtDateBR(fd) }), ". Confira o cartão no Planner.")) : null);
   }
-  function openCard() {
+  function openCard(pickFile) {
     cardDialog(F.info && F.info.scan.ok ? F.info.scan.folder : F.folder, (c) => {
       F.card = c;
       const set = [];
@@ -655,7 +680,7 @@ async function screenInicio(root) {
       F.fromCard = set;
       Object.entries(pill).forEach(([k, el]) => el.classList.toggle("hidden", !set.includes(k)));
       drawCard();
-    });
+    }, pickFile === true);
   }
   prof.addEventListener("change", () => {
     if (!tag.value.trim() && prof.value.trim()) { tag.value = prof.value.trim(); F.nome_tarja = tag.value; }

@@ -1,6 +1,7 @@
 """Colar o cartão do Planner (pedido do JP, 23/11/2026).
 
-O JP copia o bloco "Preenchimento do professor" do cartão e cola no Início. O texto vem no formato
+O JP copia o bloco "Preenchimento do professor" do cartão e cola no Início, ou abre o .txt com os mesmos
+campos que a equipe exporta do Planner. O texto vem no formato
 "Campo: valor", uma linha por campo, às vezes com marcas do Markdown do Planner ("> ###", links
 "[texto](mailto:…)"). Daqui saem só os campos que o Revisor usa:
 
@@ -87,9 +88,11 @@ def parse(text: str) -> dict:
     found: dict[str, str | None] = {}
     others: list[str] = []
     for raw in (text or "").splitlines():
-        if ":" not in raw:
+        # "Campo: valor" (cartão colado ou .txt exportado); também "Campo = valor" e "Campo<tab>valor"
+        m = re.match(r"^([^:\t=]{1,80})[:\t=](.*)$", raw)
+        if not m:
             continue
-        k, v = raw.split(":", 1)
+        k, v = m.group(1), m.group(2)
         label = _clean_label(k)
         if not label or len(label) > 60:
             continue

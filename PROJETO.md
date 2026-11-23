@@ -749,6 +749,9 @@ da PUC e não mudam nada.
    "Nome completo". Curso, Disciplina. "Data da gravação" só para conferir com a data do começo do nome da pasta
    ("AAAA MM DD Professor"): diferente → aviso para corrigir o cartão no Planner. Vazio/"não sei"/"-" = nada.
    Telefone, e-mail, matrícula etc. não são usados nem guardados. rev["gravacao"] = data do cartão (registro).
+   Ajuste (23/11, tarde): também abre um .txt exportado (botão "Abrir .txt" na faixa e "Abrir arquivo .txt" na
+   janela, ou arrastar para a caixa); lido no navegador (UTF-8, senão Windows-1252) e enviado ao mesmo parser,
+   que agora aceita "Campo: valor", "Campo = valor" e "Campo<tab>valor". O formato final do .txt ainda não chegou.
    Início (só modo revisor): faixa "Tem o cartão do Planner?" + janela (texto à esquerda, o que leu à direita);
    campos marcados "do cartão" (some ao mudar à mão). review.suggest_professor tira a data do começo do nome.
 2. REVISÃO RECONHECIDA PELOS VÍDEOS (o JP baixa de novo e às vezes dá outro nome à pasta → revisão nova).
